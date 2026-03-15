@@ -34,6 +34,7 @@ vim.pack.add {
     { src = "https://github.com/nvim-tree/nvim-web-devicons" },
     { src = "https://github.com/sphamba/smear-cursor.nvim" },
     { src = "https://github.com/nvim-lualine/lualine.nvim" },
+    { src = "https://github.com/lewis6991/gitsigns.nvim" },
 
     -- LSP & 补全
     { src = "https://github.com/williamboman/mason.nvim" },
@@ -65,6 +66,7 @@ vim.pack.add {
     { src = "https://github.com/windwp/nvim-autopairs" },
     { src = "https://github.com/OXY2DEV/markview.nvim" },
     { src = "https://github.com/S1M0N38/love2d.nvim" },
+    { src = "https://github.com/lopi-py/luau-lsp.nvim" },
 
     -- AI 补全
     { src = "https://github.com/Exafunction/codeium.nvim" },
@@ -82,7 +84,7 @@ require("catppuccin").setup({
 vim.cmd.colorscheme "catppuccin"
 
 -- 强制刷新行号颜色
-vim.api.nvim_set_hl(0, "LineNr", { fg = "#626880" }) 
+vim.api.nvim_set_hl(0, "LineNr", { fg = "#626880" })
 vim.api.nvim_set_hl(0, "CursorLineNr", { fg = "#f5c2e7", bold = true })
 vim.api.nvim_set_hl(0, "CodeiumSuggestion", { fg = "#6c7086", italic = true })
 
@@ -124,6 +126,7 @@ vim.schedule(function()
         },
         fuzzy = { implementation = "lua" }
     }
+    require('gitsigns').setup {} -- git diff显示
 
     -- === LSP (适配 0.12) ===
     require "mason" .setup()
@@ -133,6 +136,12 @@ vim.schedule(function()
     }
     local caps = require "blink.cmp" .get_lsp_capabilities()
     vim.lsp.config("lua_ls", { capabilities = caps, settings = { Lua = { diagnostics = { globals = { "vim" } } } } })
+    require "luau-lsp" .setup {
+        platform = {
+            type = "roblox", -- 这一行会自动帮你搞定 game, workspace 等所有全局变量
+        },
+    }
+
     vim.lsp.config("clangd", { capabilities = caps })
     vim.lsp.config("pyright", { capabilities = caps })
     vim.lsp.enable({"lua_ls", "clangd", "pyright"})
