@@ -262,3 +262,6 @@ key('n', '<A-l>', ss.resize_right, { desc = 'Resize Right' })
 
 -- Love2D 快捷键
 key('n', '<leader>lr', ':!lovec.exe src<CR>', { desc = '󰠫 Run LÖVE' })
+
+-- GIT 操作
+vim.keymap.set('n', '<leader>gs', ':Neotree float git_status<CR>', { desc = '󰊢 Git Status Float' })
