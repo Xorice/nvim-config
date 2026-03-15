@@ -19,7 +19,8 @@ opt.cursorline = true
 opt.mouse = "a"
 
 -- VSCode 风格折叠设置
-opt.foldcolumn = '1'
+opt.foldcolumn = '0'
+opt.fillchars = [[eob: ,fold: ,foldopen:,foldsep: ,foldclose:]] -- 更加现代的图标
 opt.foldlevel = 99
 opt.foldlevelstart = 99
 opt.foldenable = true
@@ -84,7 +85,7 @@ require("catppuccin").setup({
 vim.cmd.colorscheme "catppuccin"
 
 -- 强制刷新行号颜色
-vim.api.nvim_set_hl(0, "LineNr", { fg = "#626880" })
+vim.api.nvim_set_hl(0, "LineNr", { fg = "#898fa6" })
 vim.api.nvim_set_hl(0, "CursorLineNr", { fg = "#f5c2e7", bold = true })
 vim.api.nvim_set_hl(0, "CodeiumSuggestion", { fg = "#6c7086", italic = true })
 
@@ -222,26 +223,31 @@ vim.schedule(function()
     end
 
     -- 2. 配置 Lualine
-    require('lualine').setup({
+    require 'lualine' .setup {
         options = {
-            component_separators = { left = '󰿟', right = '󰿟' },
-            section_separators = { left = '', right = '' },
-            globalstatus = true, -- 0.12 推荐开启全局状态栏
+            -- 核心修正：左侧 section 结尾用右半圆，右侧 section 开头用左半圆
+            section_separators = { left = '', right = '' },
+            component_separators = '', 
+            globalstatus = true,
+            theme = "auto",
         },
         sections = {
-            lualine_a = { { 'mode', fmt = function(str) return str:sub(1, 1) end } }, -- 只显示模式首字母
+            -- A 组：左侧最开头手动加一个左半圆，末尾由 options 自动加右半圆
+            lualine_a = { { 'mode', fmt = function(str) return str:sub(1, 1) end, separator = { left = '' } } },
             lualine_b = { 'branch', 'diff', 'diagnostics' },
-            lualine_c = { { 'filename', path = 1 } }, -- 显示相对路径
+            lualine_c = { { 'filename', path = 1 } },
             lualine_x = {
-                { codeium_status }, -- 这里加入 AI 状态
+                { codeium_status },
                 'encoding',
                 'filetype'
             },
             lualine_y = { 'progress' },
-            lualine_z = { 'location' }
+            -- Z 组：末尾手动加一个右半圆，开头由 options 自动加左半圆
+            lualine_z = { { 'location', separator = { right = '' } } }
         }
-    })
+    }
 end)
+
 
 -------------------------------------------------------------------------------
 -- 5. 快捷键映射
