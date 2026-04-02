@@ -4,8 +4,8 @@ require("codeium").setup {
         enabled = true,
         key_bindings = {
             accept = "<C-f>",
-            next   = "<A-]>",
-            prev   = "<A-[>",
+            next   = "<A-n>",
+            prev   = "<A-p>",
         },
     },
 }
