@@ -6,7 +6,7 @@
 
 - **Core**: Neovim 0.12 Nightly
 - **AI**: Codeium (Free & Fast)
-- **LSP**: Mason + Blink.cmp (高性能补全)
+- **LSP**: Mason + Blink.cmp 
 - **UI**: Catppuccin Mocha + Lualine + Smear Cursor
 - **Debug**: DAP (C++/Python) ready
 
@@ -34,7 +34,7 @@ nvim
  
 | 按键 | 功能 |
 |------|------|
-| `,rc` | 编译并运行当前 C/C++ 文件 |
+| `,rc` | 编译并运行当前文件 |
 | `,r` | DAP 开始 / 继续调试 |
 | `,b` | 切换断点 |
 | `,di` | Step Into |
@@ -53,6 +53,7 @@ nvim
 | `Ctrl+S` | 保存 |
 | `Shift+方向键` | 进入 / 扩展 Visual 选区 |
 | `Ctrl+H/L` | 按单词跳转 |
+| `Ctrl+/` | 注释 / 取消注释 |
  
 ### 折叠
  
@@ -77,9 +78,9 @@ nvim
  
 ## 🔧 支持的语言
  
-| 语言 | LSP | 调试 |
-|------|-----|------|
-| C / C++ | clangd | codelldb ✅ |
-| Python | pyright | debugpy ✅ |
-| Lua | lua_ls | — |
-| Luau | luau-lsp | — |
+| 语言 | LSP | 调试 | 编译运行 |
+|------|-----|------| -------|
+| C / C++ | clangd | codelldb ✅ | ✅  |
+| Python | pyright | debugpy ✅ | ✅  |
+| Lua | lua_ls | — | ✅  |
+| Luau | luau-lsp | — | ❌ |
