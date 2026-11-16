@@ -80,10 +80,12 @@ function M.setup()
         if vim.fn.filereadable(marker) == 0 then
             vim.fn.mkdir(vim.fn.stdpath('state'), 'p')
             vim.fn.writefile({ os.date() }, marker)
-            vim.api.nvim_create_autocmd('VimEnter', { once = true, callback = function()
+            local function install()
                 vim.notify('首次启动，正在安装系统依赖: ' .. table.concat(missing, ', '))
                 M.install()
-            end })
+            end
+            if vim.v.vim_did_enter == 1 then vim.schedule(install)
+            else vim.api.nvim_create_autocmd('VimEnter', { once = true, callback = install }) end
             return false
         end
     end

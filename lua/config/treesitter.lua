@@ -1,6 +1,7 @@
 local treesitter = require('nvim-treesitter')
 local dependencies = require('dependencies')
 dependencies.setup()
+require('bread.startup').checkpoint()
 dependencies.parsers_ready = false
 treesitter.setup({})
 

@@ -3,23 +3,26 @@
 
 vim.opt.runtimepath:prepend(vim.fn.stdpath('config'))
 
-require('platform').setup()
 require('options')
+-- Filetype detection must be registered before command-line files are read.
 require('project').setup()
-if not require('bootstrap').setup() then return end
-local installed, install_error = pcall(require, 'plugins')
-if not installed then
-    vim.notify('插件安装/加载失败，请检查网络后重启:\n' .. tostring(install_error), vim.log.levels.ERROR)
-    return
-end
+-- The explorer is loaded after the UI attaches; prevent netrw taking the directory first.
+vim.g.loaded_netrwPlugin = 1
 
-vim.schedule(function()
-    for _, name in ipairs({ 'theme', 'cmp', 'treesitter', 'ui', 'tools' }) do
-        local ok, err = xpcall(function() require('config.' .. name) end, debug.traceback)
-        if not ok then
-            vim.notify('配置模块 ' .. name .. ' 加载失败:\n' .. err, vim.log.levels.ERROR)
+require('bread.startup').run({
+    { label = 'Environment', fatal = true, run = function() require('platform').setup() end },
+    { label = 'Dependencies', fatal = true, run = function() return require('bootstrap').setup() end },
+    { label = 'Plugins', fatal = true, run = function() require('plugins') end },
+    { label = 'Theme', run = function() require('config.theme') end },
+    { label = 'Completion', run = function() require('config.cmp') end },
+    { label = 'Syntax', run = function() require('config.treesitter') end },
+    { label = 'Interface', run = function() require('config.ui') end },
+    { label = 'Tools', run = function() require('config.tools') end },
+    { label = 'Keymaps', run = function() require('keymaps') end },
+    { label = 'Workspace', run = function()
+        -- UIEnter happens after the initial FileType/BufEnter events.
+        for _, buf in ipairs(vim.api.nvim_list_bufs()) do
+            if vim.api.nvim_buf_is_loaded(buf) and vim.bo[buf].buflisted then require('plugins').activate(buf) end
         end
-    end
-end)
-
-require('keymaps')
+    end },
+})

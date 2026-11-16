@@ -1,4 +1,5 @@
 local M = {}
+local checkpoint = require('bread.startup').checkpoint
 local groups = {
     debugger = { 'nvim-nio', 'nvim-dap', 'nvim-dap-ui', 'nvim-dap-virtual-text', 'mason-nvim-dap.nvim' },
     explorer = { 'neo-tree.nvim' },
@@ -12,7 +13,10 @@ end
 
 function M.load(group)
     if loaded[group] then return end
-    for _, name in ipairs(groups[group] or {}) do vim.cmd.packadd(name) end
+    for _, name in ipairs(groups[group] or {}) do
+        vim.cmd.packadd(name)
+        checkpoint()
+    end
     if group == 'debugger' or group == 'explorer' or group == 'lsp' then require('config.' .. group) end
     loaded[group] = true
 end
@@ -61,7 +65,11 @@ vim.pack.add({
     { src = "https://github.com/Exafunction/codeium.nvim" },
     { src = "https://github.com/saghen/blink.compat" },
 }, { confirm = false, load = function(plugin)
-    if not deferred[plugin.spec.name] then vim.cmd('packadd! ' .. plugin.spec.name) end
+    if not deferred[plugin.spec.name] then
+        -- After UIEnter, Neovim's automatic plugin/ script pass has already run.
+        vim.cmd((vim.v.vim_did_enter == 1 and 'packadd ' or 'packadd! ') .. plugin.spec.name)
+    end
+    checkpoint()
 end })
 
 local function command(name, group)
@@ -86,6 +94,16 @@ for _, name in ipairs({ 'DapContinue', 'DapToggleBreakpoint', 'DapClearBreakpoin
 end
 
 local group = vim.api.nvim_create_augroup('BreadLazyPlugins', { clear = true })
+function M.activate(buf)
+    local ft = vim.bo[buf].filetype
+    if vim.tbl_contains({ 'lua', 'luau', 'c', 'cpp', 'python' }, ft) then M.load('lsp') end
+    if ft == 'markdown' then M.load('markdown') end
+    local path = vim.api.nvim_buf_get_name(buf)
+    if buf == vim.api.nvim_get_current_buf() and vim.fn.isdirectory(path) == 1 then
+        M.load('explorer')
+        require('neo-tree.command').execute({ action = 'show', position = 'current', dir = path })
+    end
+end
 vim.api.nvim_create_autocmd('FileType', { group = group, pattern = { 'lua', 'luau', 'c', 'cpp', 'python' },
     callback = function() M.load('lsp') end })
 vim.api.nvim_create_autocmd('FileType', { group = group, pattern = 'markdown',

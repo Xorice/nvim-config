@@ -1,4 +1,5 @@
 -- Subtle indent guides; search and explorer keep their existing plugins.
+local checkpoint = require('bread.startup').checkpoint
 require('snacks').setup({
     indent = {
         enabled = true,
@@ -8,6 +9,7 @@ require('snacks').setup({
 })
 -- UI configuration runs after the first file's BufReadPost.
 require('snacks').indent.enable()
+checkpoint()
 
 -- 折叠
 require('ufo').setup {
@@ -15,14 +17,20 @@ require('ufo').setup {
         return { 'treesitter', 'indent' }
     end,
 }
+checkpoint()
 
 -- Git 标记
 require('gitsigns').setup {}
+checkpoint()
 
 -- Which-key
 require("which-key").setup { preset = "helix" }
+checkpoint()
 
 -- 状态栏
+local workspace = require('bread.workspace')
+workspace.setup()
+
 local function codeium_status()
     if not vim.g.bread_codeium_enabled then return '󰚩 Off' end
     local status = require('codeium.virtual_text').status_string()
@@ -41,8 +49,13 @@ require('lualine').setup {
     sections = {
         -- A 组：左侧最开头手动加一个左半圆，末尾由 options 自动加右半圆
         lualine_a = { { 'mode', fmt = function(str) return str:sub(1, 1) end, separator = { left = '' } } },
-        lualine_b = { 'branch', 'diff', 'diagnostics' },
-        lualine_c = { { 'filename', path = 1 } },
+        lualine_b = { 'branch', {
+            'diff', cond = function() return vim.o.columns >= 100 or workspace.status() == '' end,
+        }, 'diagnostics' },
+        lualine_c = { { 'filename', path = 1 }, {
+            workspace.status,
+            fmt = function(text) return (text:gsub('%%', '%%%%')) end,
+        } },
         lualine_x = {
             { codeium_status },
             { function()
