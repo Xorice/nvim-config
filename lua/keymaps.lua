@@ -35,7 +35,15 @@ key('n', '<A-Right>', ss.resize_right, { desc = 'Resize Right' })
 -------------------------------------------------------------------------------
 -- Love2D / Git
 -------------------------------------------------------------------------------
-key('n', '<leader>lr', ':!lovec.exe src<CR>',               { desc = '󰠫 Run LÖVE' })
+key('n', '<leader>lr', function()
+    local love = require('platform').find({ 'lovec', 'love' })
+    if not love then
+        vim.notify('请先安装 LÖVE，并把它加入 PATH。', vim.log.levels.WARN)
+        return
+    end
+    local project = vim.fn.isdirectory('src') == 1 and 'src' or '.'
+    vim.fn.jobstart({ love, project }, { detach = true })
+end, { desc = '󰠫 Run LÖVE' })
 key('n', '<leader>gs', ':Neotree float git_status<CR>',     { desc = '󰊢 Git Status Float' })
 
 -------------------------------------------------------------------------------

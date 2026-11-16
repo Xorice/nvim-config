@@ -1,6 +1,8 @@
 require("mason").setup()
 require("mason-lspconfig").setup {
-    ensure_installed = { "lua_ls", "clangd", "pyright" },
+    -- Installation is managed centrally by dependencies.lua.
+    ensure_installed = {},
+    automatic_enable = { exclude = { 'luau_lsp' } },
 }
 
 local caps = require("blink.cmp").get_lsp_capabilities()
@@ -14,6 +16,7 @@ vim.lsp.config("lua_ls", {
 
 require("luau-lsp").setup {
     platform = { type = "roblox" },
+    sourcemap = { autogenerate = vim.fn.executable('rojo') == 1 },
 }
 
 vim.lsp.config("clangd", { capabilities = caps })

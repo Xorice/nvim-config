@@ -3,12 +3,13 @@ return {
     enabled = true,
     ext     = { 'c' },
     compile = function(file, out)
-        return string.format('gcc "%s" -o "%s" -g', file, out)
+        local compiler = require('platform').find({ 'gcc', 'clang', 'cc' }) or 'gcc'
+        return { compiler, file, '-o', out, '-g' }
     end,
     run = function(_, out)
-        return string.format('"%s"', out)
+        return { out }
     end,
-    link_map = {
+    link_map = require('platform').windows and {} or {
         ['math.h']       = '-lm',
         ['pthread.h']    = '-lpthread',
         ['GL/gl.h']      = '-lGL',

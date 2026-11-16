@@ -3,4 +3,3 @@ undo/
 backups/
 swaps/
 *.log
-nvim-pack-lock.json

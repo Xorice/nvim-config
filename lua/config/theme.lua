@@ -1,14 +1,11 @@
-require("catppuccin").setup({
-    flavour = "mocha",
-    transparent_background = true,
-    integrations = {
-        blink_cmp  = true,
-        native_lsp = { enabled = true },
-    },
+require("dark-2026").setup({
+    -- 编辑区透出终端背景，浮窗和补全菜单保留底色。
+    transparent = true,
+    on_highlights = function(hl, p)
+        hl.LineNr = { fg = "#858889" }
+        hl.CursorLineNr = { fg = p.fg, bold = true }
+        hl.CodeiumSuggestion = { fg = p.fg_disabled, italic = true }
+    end,
 })
 
-vim.cmd.colorscheme "catppuccin"
-
-vim.api.nvim_set_hl(0, "LineNr",            { fg = "#898fa6" })
-vim.api.nvim_set_hl(0, "CursorLineNr",      { fg = "#f5c2e7", bold = true })
-vim.api.nvim_set_hl(0, "CodeiumSuggestion", { fg = "#6c7086", italic = true })
+vim.cmd.colorscheme "dark-2026"

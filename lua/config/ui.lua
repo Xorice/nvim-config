@@ -21,7 +21,8 @@ require("which-key").setup { preset = "helix" }
 
 -- 状态栏
 local function codeium_status()
-    local status = vim.fn['codeium#GetStatusString']()
+    if not vim.g.bread_codeium_enabled then return '󰚩 Off' end
+    local status = require('codeium.virtual_text').status_string()
     if status == "" then return "󰚩 Off" end
     return "󰚩 " .. status:gsub("^%s*(.-)%s*$", "%1")
 end

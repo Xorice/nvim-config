@@ -44,36 +44,41 @@ local function find_runner(ext)
 end
 
 local function get_extra_flags(file, link_map)
-    if not link_map then return '' end
+    if not link_map then return {} end
     local flags   = {}
     local content = vim.fn.readfile(file)
     for _, line in ipairs(content) do
         for header, flag in pairs(link_map) do
-            if line:match('#include') and line:match(header) then
+            if line:match('#%s*include') and line:find(header, 1, true) then
                 if not vim.tbl_contains(flags, flag) then
                     table.insert(flags, flag)
                 end
             end
         end
     end
-    return table.concat(flags, ' ')
+    return flags
 end
 
 local function close_terminal()
-    for _, win in ipairs(vim.api.nvim_list_wins()) do
-        local buf = vim.api.nvim_win_get_buf(win)
-        if vim.bo[buf].buftype == 'terminal' then
-            vim.api.nvim_win_close(win, true)
-            break
-        end
+    if M.terminal_window and vim.api.nvim_win_is_valid(M.terminal_window) then
+        vim.api.nvim_win_close(M.terminal_window, true)
     end
 end
 
-local function open_terminal(cmd)
+local function open_terminal(cmd, dir, on_exit)
+    if vim.fn.executable(cmd[1]) == 0 then
+        vim.notify('找不到可执行文件: ' .. cmd[1] .. '\n运行 :BootstrapDeps 检查系统依赖。', vim.log.levels.ERROR)
+        return
+    end
     close_terminal()
-    vim.cmd('botright vsplit')
+    vim.cmd('botright vnew')
+    M.terminal_window = vim.api.nvim_get_current_win()
     vim.cmd('vertical resize ' .. M.config.terminal_width)
-    vim.cmd('terminal ' .. cmd)
+    local job = vim.fn.jobstart(cmd, { term = true, cwd = dir, on_exit = on_exit })
+    if job <= 0 then
+        vim.notify('无法启动: ' .. cmd[1], vim.log.levels.ERROR)
+        return
+    end
     vim.cmd('startinsert')
 end
 
@@ -95,7 +100,7 @@ function M.run()
     vim.cmd('write')
 
     local debug_dir = dir .. '/' .. M.config.debug_dir
-    local out       = debug_dir .. '/' .. name
+    local out       = debug_dir .. '/' .. name .. (require('platform').windows and '.exe' or '')
     vim.fn.mkdir(debug_dir, 'p')
 
     local gitignore = debug_dir .. '/.gitignore'
@@ -103,17 +108,20 @@ function M.run()
         vim.fn.writefile({ '*' }, gitignore)
     end
 
-    local cmd
     if runner.compile then
         local extra   = get_extra_flags(file, runner.link_map)
         local compile = runner.compile(file, out)
         local run     = runner.run(file, out)
-        cmd = string.format('%s %s && %s', compile, extra, run)
+        vim.list_extend(compile, extra)
+        open_terminal(compile, dir, function(_, code)
+            vim.schedule(function()
+                if code == 0 then open_terminal(run, dir)
+                else vim.notify('编译失败，退出码 ' .. code .. '，详情见编译终端。', vim.log.levels.ERROR) end
+            end)
+        end)
     else
-        cmd = runner.run(file, out)
+        open_terminal(runner.run(file, out), dir)
     end
-
-    open_terminal(cmd)
 end
 
 -- 手动注册语言（在语言文件之外临时添加用）

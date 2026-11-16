@@ -4,6 +4,6 @@ return {
     ext     = { 'py' },
     compile = nil,  -- 解释型，无编译步骤
     run = function(file, _)
-        return string.format('python "%s"', file)
+        return { require('platform').python() or 'python3', file }
     end,
 }

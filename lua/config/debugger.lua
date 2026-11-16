@@ -5,8 +5,8 @@ dapui.setup()
 require("nvim-dap-virtual-text").setup()
 
 require("mason-nvim-dap").setup {
-    ensure_installed      = { "codelldb", "python" },
-    automatic_installation = true,
+    ensure_installed      = {},
+    automatic_installation = false,
     handlers = {
         function(config)
             require('mason-nvim-dap').default_setup(config)
