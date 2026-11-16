@@ -19,7 +19,7 @@ if vim.g.bread_codeium_enabled then
 end
 
 require("blink.cmp").setup {
-    keymap  = { preset = "enter" },
+    keymap  = { preset = "super-tab" },
     sources = {
         default = sources,
         providers = {

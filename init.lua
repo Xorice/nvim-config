@@ -14,7 +14,7 @@ if not installed then
 end
 
 vim.schedule(function()
-    for _, name in ipairs({ 'theme', 'cmp', 'lsp', 'debugger', 'treesitter', 'ui', 'tools' }) do
+    for _, name in ipairs({ 'theme', 'cmp', 'treesitter', 'ui', 'tools' }) do
         local ok, err = xpcall(function() require('config.' .. name) end, debug.traceback)
         if not ok then
             vim.notify('配置模块 ' .. name .. ' 加载失败:\n' .. err, vim.log.levels.ERROR)

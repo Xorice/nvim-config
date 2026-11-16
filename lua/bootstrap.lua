@@ -1,19 +1,39 @@
 local M = {}
 local platform = require('platform')
 
-function M.missing()
+function M.missing(deep)
     local missing = {}
+    local cache_path = vim.fs.joinpath(vim.fn.stdpath('state'), 'bread-system-tools.json')
+    local fingerprint = vim.fn.sha256((vim.env.PATH or '') .. '\n' .. (vim.env.PATHEXT or ''))
+    local ok, value = pcall(function() return vim.json.decode(table.concat(vim.fn.readfile(cache_path), '\n')) end)
+    local cached = ok and type(value) == 'table' and value or {}
+    local known = cached.fingerprint == fingerprint and type(cached.tools) == 'table' and cached.tools or {}
+    local tools = {}
+    local function available(names)
+        local key = table.concat(names, '/')
+        if not deep and type(known[key]) == 'string' and vim.fn.executable(known[key]) == 1 then
+            tools[key] = known[key]
+        else tools[key] = platform.find(names) end
+        return tools[key] ~= nil
+    end
     for _, names in ipairs({ { 'git' }, { 'curl' }, { 'tar' }, { 'gzip' }, { 'node' },
         { 'npm' }, { 'python3', 'python' }, { 'gcc', 'clang', 'cc' },
         { 'g++', 'clang++', 'c++' }, { 'rg' }, { 'fd', 'fdfind' } }) do
-        if not platform.find(names) then table.insert(missing, table.concat(names, '/')) end
+        if not available(names) then table.insert(missing, table.concat(names, '/')) end
     end
     if platform.windows then
-        if not platform.find({ '7z', '7za' }) then table.insert(missing, '7z') end
-    elseif not platform.find({ 'unzip' }) then
+        if not available({ '7z', '7za' }) then table.insert(missing, '7z') end
+    elseif not available({ 'unzip' }) then
         table.insert(missing, 'unzip')
     end
-    local python = platform.python()
+    if cached.fingerprint ~= fingerprint or not vim.deep_equal(cached.tools, tools) then
+        -- Caching is optional; an unwritable state directory must not prevent editing.
+        pcall(function()
+            vim.fn.mkdir(vim.fn.stdpath('state'), 'p')
+            vim.fn.writefile({ vim.json.encode({ fingerprint = fingerprint, tools = tools }) }, cache_path)
+        end)
+    end
+    local python = deep and platform.python()
     if python then
         local result = vim.system({ python, '-c', 'import venv, ensurepip' }, { text = true }):wait(5000)
         if result.code ~= 0 then table.insert(missing, 'python-venv/ensurepip') end

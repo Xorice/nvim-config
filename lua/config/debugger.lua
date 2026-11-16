@@ -1,3 +1,4 @@
+require('dependencies').setup()
 local dap    = require("dap")
 local dapui  = require("dapui")
 
@@ -9,6 +10,13 @@ require("mason-nvim-dap").setup {
     automatic_installation = false,
     handlers = {
         function(config)
+            if config.name == 'python' then
+                for _, launch in ipairs(config.configurations or {}) do
+                    launch.pythonPath = function()
+                        return require('platform').python(vim.api.nvim_buf_get_name(0)) or 'python3'
+                    end
+                end
+            end
             require('mason-nvim-dap').default_setup(config)
         end,
     },

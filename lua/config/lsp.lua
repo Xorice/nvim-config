@@ -1,4 +1,4 @@
-require("mason").setup()
+require('dependencies').setup()
 require("mason-lspconfig").setup {
     -- Installation is managed centrally by dependencies.lua.
     ensure_installed = {},

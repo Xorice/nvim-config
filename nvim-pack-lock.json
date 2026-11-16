@@ -8,17 +8,9 @@
       "rev": "1454f14a8d855a578ceeba77c62538fa1459a67c",
       "src": "https://github.com/saghen/blink.compat"
     },
-    "catppuccin": {
-      "rev": "384f304c8b04664c9e0091fbfb3923c5f97c1bcf",
-      "src": "https://github.com/catppuccin/nvim"
-    },
     "codeium.nvim": {
       "rev": "821b570b526dbb05b57aa4ded578b709a704a38a",
       "src": "https://github.com/Exafunction/codeium.nvim"
-    },
-    "comment.nvim": {
-      "rev": "e30b7f2008e52442154b66f7c519bfd2f1e32acb",
-      "src": "https://github.com/numtostr/comment.nvim"
     },
     "dark-2026.nvim": {
       "rev": "4d19b8f1c1af75ae67d58506fb144e6b09d68e1f",
@@ -31,10 +23,6 @@
     "love2d": {
       "rev": "c630dd883cda128a19d850bd5e3911110b271609",
       "src": "https://github.com/LuaCATS/love2d"
-    },
-    "love2d.nvim": {
-      "rev": "25715394680590f56aab90390d430cab0dc46808",
-      "src": "https://github.com/S1M0N38/love2d.nvim"
     },
     "lualine.nvim": {
       "rev": "47f91c416daef12db467145e16bed5bbfe00add8",

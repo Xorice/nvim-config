@@ -5,7 +5,20 @@ local key = vim.keymap.set
 -------------------------------------------------------------------------------
 key('n', '<leader>e',  ':Neotree toggle<CR>',                                        { desc = '󰙅 Toggle Explorer' })
 key('n', '<leader>m',  ':Markview toggle<CR>',                                       { desc = '󰽉 Toggle Markdown' })
-key('n', '<C-p>',      function() require('telescope.builtin').find_files() end,      { desc = '󰱼 Find Files' })
+local function search(method)
+    return function()
+        require('plugins').load('telescope')
+        require('telescope.builtin')[method]({ cwd = require('project').search_root() })
+    end
+end
+key('n', '<C-p>', search('find_files'), { desc = '󰱼 Find Files' })
+key('n', '<leader>fg', search('live_grep'), { desc = 'Search Project Text' })
+key('n', '<leader>fw', search('grep_string'), { desc = 'Search Word in Project' })
+key('n', '<leader>cf', function()
+    local clients = vim.lsp.get_clients({ bufnr = 0, method = 'textDocument/formatting' })
+    if #clients == 0 then vim.notify('当前语言服务不支持格式化。'); return end
+    vim.lsp.buf.format({ async = true, id = clients[1].id })
+end, { desc = 'Format Buffer' })
 
 -------------------------------------------------------------------------------
 -- 折叠
@@ -16,12 +29,18 @@ key('n', 'zM', function() require('ufo').closeAllFolds() end, { desc = '󱃃 Clo
 -------------------------------------------------------------------------------
 -- DAP 调试
 -------------------------------------------------------------------------------
-key('n', '<leader>r',  function() require('dap').continue()          end, { desc = '󰐊 Debug: Start/Continue' })
-key('n', '<leader>b',  function() require('dap').toggle_breakpoint()  end, { desc = '󰃢 Debug: Toggle Breakpoint' })
-key('n', '<leader>dq', function() require('dap').terminate()          end, { desc = '󰓛 Debug: Terminate' })
-key('n', '<leader>du', function() require('dapui').toggle()           end, { desc = '󱂵 Debug: Toggle UI' })
-key('n', '<leader>di', function() require('dap').step_into()          end, { desc = '󰆹 Debug: Step Into' })
-key('n', '<leader>do', function() require('dap').step_over()          end, { desc = '󰆸 Debug: Step Over' })
+local function debug_action(method, module)
+    return function()
+        require('plugins').load('debugger')
+        require(module or 'dap')[method]()
+    end
+end
+key('n', '<leader>r',  debug_action('continue'),         { desc = '󰐊 Debug: Start/Continue' })
+key('n', '<leader>b',  debug_action('toggle_breakpoint'), { desc = '󰃢 Debug: Toggle Breakpoint' })
+key('n', '<leader>dq', debug_action('terminate'),        { desc = '󰓛 Debug: Terminate' })
+key('n', '<leader>du', debug_action('toggle', 'dapui'),   { desc = '󱂵 Debug: Toggle UI' })
+key('n', '<leader>di', debug_action('step_into'),        { desc = '󰆹 Debug: Step Into' })
+key('n', '<leader>do', debug_action('step_over'),        { desc = '󰆸 Debug: Step Over' })
 
 -------------------------------------------------------------------------------
 -- 窗口大小调整 (smart-splits)
@@ -60,7 +79,7 @@ key('v', '<A-j>', ":m '>+1<CR>gv=gv",    { noremap = true, silent = true })
 -- 注释
 -------------------------------------------------------------------------------
 key('n', '<C-_>',  'gcc', { remap = true, silent = true, desc = '󰆉 Toggle Comment' })
-key('v', '<C-_>',  'gc gv',  { remap = true, silent = true, desc = '󰆉 Toggle Comment' })
+key('v', '<C-_>',  'gcgv',   { remap = true, silent = true, desc = '󰆉 Toggle Comment' })
 -------------------------------------------------------------------------------
 -- 按单词跳转
 -------------------------------------------------------------------------------

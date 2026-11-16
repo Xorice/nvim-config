@@ -2,6 +2,7 @@ local M = {}
 local overrides = {} -- Session only; project configuration remains the source of truth.
 local rojo_choices, rojo_pending = {}, {}
 local refresh_id = 0
+local config_root
 
 local function normalize(path)
     return vim.fs.normalize(vim.uv.fs_realpath(path) or path)
@@ -96,7 +97,7 @@ function M.detect(path)
     if path == '' then path = vim.fn.getcwd() end
     path = normalize(vim.fn.fnamemodify(path, ':p'))
     local dir = vim.fn.isdirectory(path) == 1 and path or vim.fs.dirname(path)
-    local config_root = normalize(vim.fn.stdpath('config'))
+    config_root = config_root or normalize(vim.fn.stdpath('config'))
     if within(path, config_root) then return { kind = 'nvim', root = config_root } end
     local fallback = within(dir, normalize(vim.fn.getcwd())) and normalize(vim.fn.getcwd()) or dir
     local love_root
@@ -116,13 +117,33 @@ function M.detect(path)
             elseif vim.fn.filereadable(luarc) == 1 then kind = love_config(luarc) and 'love' or 'lua' end
         end
         if kind then
-            return { kind = kind, root = root, rojo = rojo, project_files = project_files, entry = love_entry(root) }
+            return { kind = kind, root = root, rojo = rojo, project_files = project_files, entry = love_entry(root),
+                config = vim.fn.filereadable(luarc) == 1 and luarc
+                    or (vim.fn.filereadable(vim.fs.joinpath(root, '.luaurc')) == 1 and vim.fs.joinpath(root, '.luaurc') or nil) }
         end
         if love_source(root) then love_root = root end
         if vim.uv.fs_stat(vim.fs.joinpath(root, '.git')) then fallback = root; break end
     end
     if love_root then return { kind = 'love', root = love_root, entry = love_entry(love_root) } end
     return { kind = path:match('%.luau$') and 'luau' or 'lua', root = fallback }
+end
+
+-- Buffer-owned data is released on deletion. Arbitrary path queries stay uncached.
+function M.for_buffer(buf, force)
+    buf = (buf == nil or buf == 0) and vim.api.nvim_get_current_buf() or buf
+    local path, cwd = vim.api.nvim_buf_get_name(buf), vim.fn.getcwd()
+    local cached = vim.b[buf].bread_project_cache
+    if force or not cached or cached.path ~= path or cached.cwd ~= cwd then
+        cached = { path = path, cwd = cwd, info = M.detect(path) }
+        vim.b[buf].bread_project_cache = cached
+    end
+    return cached.info
+end
+
+function M.search_root()
+    local path = vim.api.nvim_buf_get_name(0)
+    if vim.bo.filetype == 'lua' or vim.bo.filetype == 'luau' then return M.for_buffer(0).root end
+    return vim.fs.root(path ~= '' and path or vim.fn.getcwd(), { '.git' }) or vim.fn.getcwd()
 end
 
 function M.select_rojo(info, callback)
@@ -141,31 +162,55 @@ function M.select_rojo(info, callback)
     end)
 end
 
-function M.filetype(path)
-    local kind = M.detect(path).kind
+function M.filetype(path, buf)
+    local kind = (buf and M.for_buffer(buf) or M.detect(path)).kind
     return (kind == 'roblox' or kind == 'luau' or path:match('%.luau$')) and 'luau' or 'lua'
 end
 
 function M.refresh(root)
     refresh_id = refresh_id + 1
     local current_refresh = refresh_id
-    local stopping = false
-    for _, client in ipairs(vim.lsp.get_clients()) do
-        if client.config.root_dir == root and (client.name == 'lua_ls' or client.name == 'luau-lsp' or client.name == 'luau_standard') then
-            client:stop()
-            stopping = true
+    local buffers, clients = {}, {}
+    for _, buf in ipairs(vim.api.nvim_list_bufs()) do
+        local path = vim.api.nvim_buf_get_name(buf)
+        if vim.api.nvim_buf_is_loaded(buf) and (path:match('%.lua$') or path:match('%.luau$'))
+            and (within(normalize(path), root) or same(M.for_buffer(buf).root, root)) then
+            buffers[buf] = true
+            for _, client in ipairs(vim.lsp.get_clients({ bufnr = buf, _uninitialized = true })) do
+                if client.name == 'lua_ls' or client.name == 'luau-lsp' or client.name == 'luau_standard' then
+                    clients[client.id] = client
+                end
+            end
         end
     end
+    -- A newly added nested config can split a shared client. Reattach all its buffers.
+    for _, client in pairs(clients) do
+        for buf in pairs(client.attached_buffers) do buffers[buf] = true end
+        client:stop()
+    end
+    for buf in pairs(buffers) do
+        M.for_buffer(buf, true)
+        vim.b[buf].bread_project_refresh = current_refresh
+    end
     local lsp = package.loaded['project_lsp']
-    if lsp and not stopping then lsp.stop_sourcemap(root) end
-    vim.defer_fn(function()
-        if current_refresh ~= refresh_id then return end
-        for _, buf in ipairs(vim.api.nvim_list_bufs()) do
-            local path = vim.api.nvim_buf_get_name(buf)
-            if vim.api.nvim_buf_is_loaded(buf) and (path:match('%.lua$') or path:match('%.luau$')) and M.detect(path).root == root then
-                local ft = M.filetype(path)
+    if lsp and not next(clients) then lsp.stop_sourcemap(root) end
+    local attempts = 0
+    local function reattach()
+        attempts = attempts + 1
+        for _, client in pairs(clients) do
+            if not client:is_stopped() then
+                if attempts >= 10 then client:stop(true) end
+                vim.defer_fn(reattach, 100)
+                return
+            end
+        end
+        for buf in pairs(buffers) do
+            if vim.api.nvim_buf_is_loaded(buf) and vim.b[buf].bread_project_refresh == current_refresh then
+                local info = M.for_buffer(buf)
+                local ft = (info.kind == 'roblox' or info.kind == 'luau'
+                    or vim.api.nvim_buf_get_name(buf):match('%.luau$')) and 'luau' or 'lua'
                 vim.api.nvim_buf_call(buf, function()
-                    vim.b.bread_project_kind = M.detect(path).kind
+                    vim.b.bread_project_kind = info.kind
                     if vim.bo.filetype ~= ft then vim.bo.filetype = ft
                     elseif vim.fn.exists('#nvim.lsp.enable#FileType') == 1 then
                         vim.api.nvim_exec_autocmds('FileType', { group = 'nvim.lsp.enable', buffer = buf, modeline = false })
@@ -173,7 +218,22 @@ function M.refresh(root)
                 end)
             end
         end
-    end, 150)
+    end
+    vim.defer_fn(reattach, 150)
+end
+
+local function recheck()
+    local changed = {}
+    for _, buf in ipairs(vim.api.nvim_list_bufs()) do
+        if vim.api.nvim_buf_is_loaded(buf) and (vim.bo[buf].filetype == 'lua' or vim.bo[buf].filetype == 'luau') then
+            local cached = vim.b[buf].bread_project_cache
+            local old = cached and cached.info or M.for_buffer(buf)
+            local new = M.for_buffer(buf, true)
+            if old.kind ~= new.kind or old.root ~= new.root or old.rojo ~= new.rojo
+                or old.entry ~= new.entry or old.config ~= new.config then changed[new.root] = true end
+        end
+    end
+    for root in pairs(changed) do M.refresh(root) end
 end
 
 local kinds = { 'lua', 'love', 'luau', 'roblox' }
@@ -208,8 +268,9 @@ end
 
 function M.setup()
     vim.filetype.add({ extension = { lua = M.filetype, luau = M.filetype } })
+    local group = vim.api.nvim_create_augroup('BreadProjectLabel', { clear = true })
     vim.api.nvim_create_autocmd({ 'FileType', 'BufEnter', 'BufWritePost' }, {
-        group = vim.api.nvim_create_augroup('BreadProjectLabel', { clear = true }),
+        group = group,
         callback = function(event)
             local path = vim.api.nvim_buf_get_name(event.buf)
             local name = vim.fs.basename(path)
@@ -218,12 +279,18 @@ function M.setup()
                 M.refresh(vim.fs.dirname(path))
                 return
             end
+            if event.event == 'BufWritePost' and (name == 'main.lua' or name == 'conf.lua') then recheck() end
             local ft = vim.bo[event.buf].filetype
             if ft == 'lua' or ft == 'luau' then
-                vim.b[event.buf].bread_project_kind = M.detect(path).kind
+                vim.b[event.buf].bread_project_kind = M.for_buffer(event.buf).kind
             end
         end,
     })
+    vim.api.nvim_create_autocmd({ 'FocusGained', 'DirChanged', 'FileChangedShellPost' }, { group = group, callback = recheck })
+    vim.api.nvim_create_autocmd({ 'BufDelete', 'BufFilePost' }, { group = group, callback = function(event)
+        vim.b[event.buf].bread_project_cache = nil
+        vim.b[event.buf].bread_project_kind = nil
+    end })
     vim.api.nvim_create_user_command('LuaProjectInit', function(opts) M.init(opts.args) end,
         { nargs = 1, complete = function() return kinds end, desc = '创建标准 Lua/Luau 项目配置（不覆盖）' })
     vim.api.nvim_create_user_command('LuaProjectUse', function(opts)

@@ -4,11 +4,10 @@ M.packages = { 'lua-language-server', 'clangd', 'pyright', 'luau-lsp', 'codelldb
 M.parsers = { 'lua', 'luau', 'c', 'cpp', 'python', 'markdown', 'markdown_inline', 'vim', 'vimdoc', 'query' }
 
 local function outdated_luau()
-    local path = vim.fs.joinpath(vim.fn.stdpath('data'), 'mason', 'packages', 'luau-lsp',
-        require('platform').windows and 'luau-lsp.exe' or 'luau-lsp')
-    if vim.fn.executable(path) ~= 1 then return true end
-    local result = vim.system({ path, '--version' }, { text = true }):wait(5000)
-    local version = result.stdout and result.stdout:match('%d+%.%d+%.%d+')
+    local path = vim.fs.joinpath(vim.fn.stdpath('data'), 'mason', 'packages', 'luau-lsp', 'mason-receipt.json')
+    local ok, receipt = pcall(function() return vim.json.decode(table.concat(vim.fn.readfile(path), '\n')) end)
+    local id = ok and receipt.source and receipt.source.id or ''
+    local version = id:match('@v?(%d+%.%d+%.%d+)$')
     return not version or vim.version.lt(version, '1.70.1')
 end
 
@@ -16,6 +15,18 @@ function M.ensure(callback, update)
     if M.running then
         if update then vim.notify('工具安装任务正在运行，请完成后再执行 :UpdateTools。') end
         return
+    end
+    -- Installed tools work offline. Only load/refresh the registry when needed.
+    if not update then
+        local ready = not outdated_luau()
+        for _, name in ipairs(M.packages) do
+            ready = ready and vim.fn.filereadable(vim.fs.joinpath(vim.fn.stdpath('data'),
+                'mason', 'packages', name, 'mason-receipt.json')) == 1
+        end
+        if ready then
+            if callback then vim.schedule(callback) end
+            return
+        end
     end
     M.running = true
     if update then vim.notify('正在更新 Mason 工具；:Mason 查看进度。') end
@@ -65,6 +76,9 @@ function M.ensure(callback, update)
 end
 
 function M.setup()
+    if M.configured then return end
+    M.configured = true
+    require('mason').setup()
     vim.api.nvim_create_user_command('UpdateTools', function() M.ensure(nil, true) end,
         { desc = '主动更新 Mason 语言服务和调试器到当前稳定版' })
 end

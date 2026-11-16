@@ -5,15 +5,11 @@ function M.check()
     health.start('面包 NVIM')
     if vim.fn.has('nvim-0.12') == 1 then health.ok('Neovim 0.12+')
     else health.error('需要 Neovim 0.12+（vim.pack）') end
-    local missing = require('bootstrap').missing()
+    local missing = require('bootstrap').missing(true)
     if #missing == 0 then health.ok('系统依赖齐全')
     else health.error('缺少: ' .. table.concat(missing, ', '), '运行 :BootstrapDeps') end
     local python = require('platform').python()
-    if python then
-        local result = vim.system({ python, '-c', 'import venv, ensurepip' }, { text = true }):wait(5000)
-        if result.code == 0 then health.ok('Python 支持 venv/ensurepip: ' .. python)
-        else health.error('Python 缺少 venv/ensurepip: ' .. python, '安装标准 CPython；Linux 安装 python3-venv/python3-pip') end
-    end
+    if python then health.info('当前 Python: ' .. python) end
     local found, registry = pcall(require, 'mason-registry')
     for _, name in ipairs(require('dependencies').packages) do
         if found and registry.is_installed(name) then health.ok(name .. ' 已安装')

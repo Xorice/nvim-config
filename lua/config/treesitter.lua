@@ -16,6 +16,11 @@ vim.api.nvim_create_autocmd('FileType', {
 
 local function install_parsers()
     dependencies.parsers_ready = false
+    local installed = treesitter.get_installed('parsers')
+    if vim.iter(dependencies.parsers):all(function(lang) return vim.tbl_contains(installed, lang) end) then
+        dependencies.parsers_ready = true
+        return
+    end
     if vim.fn.executable('tree-sitter') == 0 then return end
     if not require('platform').find({ 'gcc', 'clang', 'cc', 'cl' }) then return end
     treesitter.install(dependencies.parsers):await(function(err, success)

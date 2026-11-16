@@ -12,6 +12,8 @@ opt.termguicolors  = true
 opt.signcolumn     = "yes"
 opt.cursorline     = true
 opt.mouse          = "a"
+opt.undofile       = true
+opt.autoread       = true -- Nightly uses native file watchers for external edits.
 
 -- VSCode 风格折叠
 opt.foldcolumn    = '1'

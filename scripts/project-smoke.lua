@@ -2,16 +2,22 @@
 -- Exercises real language servers, LÖVE, Rojo/Rokit and process cleanup.
 local project = require('project')
 local fixture = vim.fn.tempname() .. ' lua-project-check & paths'
-local errors, output = {}, ''
+local errors, warnings, output = {}, {}, ''
 local trace = {}
 local exit_codes = {}
 vim.api.nvim_create_autocmd({ 'LspAttach', 'LspDetach' }, { callback = function(event)
     local client = vim.lsp.get_client_by_id(event.data.client_id)
     trace[#trace + 1] = { event.event, event.buf, client and client.name }
 end })
-local notify, jobstart = vim.notify, vim.fn.jobstart
+local notify, jobstart, system = vim.notify, vim.fn.jobstart, vim.system
+local show_message = vim.lsp.handlers['window/showMessage']
+vim.lsp.handlers['window/showMessage'] = function(err, result, ctx, config)
+    if result and result.type == 1 then errors[#errors + 1] = result.message end
+    return show_message(err, result, ctx, config)
+end
 vim.notify = function(message, level, ...)
     if level == vim.log.levels.ERROR then errors[#errors + 1] = message end
+    if level == vim.log.levels.WARN then warnings[#warnings + 1] = message end
     return notify(message, level, ...)
 end
 
@@ -65,11 +71,6 @@ end
 
 local function check()
     assert(vim.wait(10000, function() return vim.fn.exists(':UpdateTools') == 2 end))
-    local on_exit = vim.lsp.config['luau-lsp'].on_exit
-    vim.lsp.config('luau-lsp', { on_exit = function(code, signal, id)
-        exit_codes[id] = code
-        on_exit(code, signal, id)
-    end })
     local plain = write(fixture .. '/plain/main.lua', { 'print("PLAIN_OK")', 'love.graphics.print("unknown")', 'vim.api.nvim_get_current_buf()' })
     local love = write(fixture .. '/love/src/main.lua', { 'function love.load()', '  print("LOVE_OK")', '  love.event.quit()', 'end', 'function love.draw() love.graphics.print("ok") end' })
     write(fixture .. '/love/src/conf.lua', { 'function love.conf(t)', '  t.window = false', '  t.modules.audio = false', 'end' })
@@ -94,6 +95,7 @@ local function check()
 
     local plain_buf = open(plain)
     local plain_client = client_for(plain_buf, 'lua_ls')
+    assert(not package.loaded['luau-lsp'], 'ordinary Lua loaded Roblox definition components')
     assert(not (plain_client.config.settings.Lua.diagnostics or {}).globals)
     assert(not plain_client.config.settings.Lua.workspace.library)
     assert(vim.wait(20000, function()
@@ -116,17 +118,44 @@ local function check()
     assert(standard_client.config.init_options.fflags.LuauSolverV2 == 'true')
     print('PASS: real LuaLS diagnostics, LÖVE API completion and standalone Luau isolation')
 
+    local on_exit = vim.lsp.config['luau-lsp'].on_exit
+    vim.lsp.config('luau-lsp', { on_exit = function(code, signal, id)
+        exit_codes[id] = code
+        on_exit(code, signal, id)
+    end })
+    -- Model a cold/slow Rokit launch and a partially written first sourcemap.
+    local rojo_starts, owned_job = 0, nil
+    local function delayed_rojo(command, options, on_exit)
+        local is_rojo = command[1] == 'rojo'
+        if command[1] == 'rojo' then
+            rojo_starts = rojo_starts + 1
+            local wrapper = write(fixture .. '/delayed-rojo.lua', vim.split('vim.wait(2000)\nlocal result = vim.system('
+                .. vim.inspect(command) .. ', { stdout = false, stderr = function(_, data) if data then io.stderr:write(data) end end }):wait()\nos.exit(result.code)', '\n'))
+            command = { vim.v.progpath, '--clean', '-l', wrapper }
+        end
+        local job = system(command, options, on_exit)
+        if is_rojo then owned_job = job end
+        return job
+    end
+    vim.system = delayed_rojo
     local roblox_buf = open(roblox)
     assert(vim.bo[roblox_buf].filetype == 'luau', 'Roblox .lua filetype is ' .. vim.bo[roblox_buf].filetype)
     local detected_root
     vim.lsp.config['luau-lsp'].root_dir(roblox_buf, function(root) detected_root = root end)
     assert(detected_root == project.detect(roblox).root, 'LSP root callback failed')
     local roblox_client = client_for(roblox_buf, 'luau-lsp')
+    vim.system = system
+    assert(rojo_starts == 1, 'expected one delayed sourcemap process')
     assert(roblox_client.config.init_options.fflags.LuauSolverV2 == 'true')
-    completion(roblox_client, roblox_buf, 0, 22, 'new')
+    assert(not roblox_client.settings['luau-lsp'].sourcemap.enabled, 'sourcemap enabled before first output')
     local map_path = roblox_client.config.settings['luau-lsp'].sourcemap.sourcemapFile
+    write(map_path, { '{' })
+    vim.wait(250, function() return false end)
+    assert(not roblox_client.settings['luau-lsp'].sourcemap.enabled, 'partially written sourcemap was enabled')
+    completion(roblox_client, roblox_buf, 0, 22, 'new')
     assert(map_path:find(vim.fs.normalize(vim.fn.stdpath('cache')), 1, true) == 1)
-    assert(vim.wait(15000, function() return vim.fn.filereadable(map_path) == 1 end), 'Rojo did not generate sourcemap')
+    assert(vim.wait(15000, function() return roblox_client.settings['luau-lsp'].sourcemap.enabled end),
+        'Rojo sourcemap was not enabled after valid output')
     local map = vim.json.decode(table.concat(vim.fn.readfile(map_path), '\n'))
     assert(map.className == 'DataModel')
     completion(roblox_client, roblox_buf, 4, #('local child = require(script.'), 'module')
@@ -135,6 +164,7 @@ local function check()
     assert(vim.wait(5000, function()
         return table.concat(vim.fn.readfile(map_path), '\n'):find('extra', 1, true) ~= nil
     end), 'sourcemap watcher did not update after creating a module')
+    completion(roblox_client, roblox_buf, 4, #('local child = require(script.'), 'extra', 5000)
     local newer_buf = open(new_module)
     assert(client_for(newer_buf, 'luau-lsp').id == roblox_client.id, 'same project should reuse one client')
     local proc_count = #vim.lsp.get_clients({ name = 'luau-lsp' })
@@ -144,7 +174,41 @@ local function check()
     assert(vim.wait(5000, function() return roblox_client:is_stopped() and vim.fn.filereadable(map_path) == 0 end), 'project did not release LSP/sourcemap')
     assert(exit_codes[roblox_client.id] == 0, 'Roblox LSP did not shut down cleanly: ' .. tostring(exit_codes[roblox_client.id]))
     assert(vim.fn.filereadable(fixture .. '/roblox/sourcemap.json') == 0)
-    print('PASS: Roblox API completion, new solver, real Rokit/Rojo sourcemap, reuse and cleanup')
+    print('PASS: delayed/partial sourcemap startup, live new-module completion, reuse and cleanup')
+
+    local early = write(fixture .. '/early-close/src/init.luau', { 'local value = Instance.new("Part")' })
+    write(fixture .. '/early-close/default.project.json', { '{"name":"Early","tree":{"$className":"DataModel","ReplicatedStorage":{"$path":"src"}}}' })
+    write(fixture .. '/early-close/rokit.toml', { '[tools]', 'rojo = "rojo-rbx/rojo@7.7.1"' })
+    vim.system = delayed_rojo
+    local early_buf = open(early)
+    local early_client = client_for(early_buf, 'luau-lsp')
+    vim.system = system
+    local early_job = owned_job
+    local early_map = early_client.settings['luau-lsp'].sourcemap.sourcemapFile
+    assert(not early_client.settings['luau-lsp'].sourcemap.enabled)
+    -- Confirm workspace initialization has completed while the map is still pending.
+    completion(early_client, early_buf, 0, #('local value = Instance.'), 'new')
+    assert(not early_client.settings['luau-lsp'].sourcemap.enabled)
+    vim.api.nvim_buf_delete(early_buf, { force = true })
+    assert(vim.wait(5000, function()
+        return early_client:is_stopped() and early_job:is_closing() and vim.fn.filereadable(early_map) == 0
+    end), 'closing during generation retained a job or sourcemap')
+
+    local failure_script = write(fixture .. '/failed-rojo.lua', { 'io.stderr:write("SIMULATED_ROJO_FAILURE\\n")', 'os.exit(7)' })
+    vim.system = function(command, options, on_exit)
+        if command[1] == 'rojo' then command = { vim.v.progpath, '--clean', '-l', failure_script } end
+        return system(command, options, on_exit)
+    end
+    local failed_buf = open(early)
+    local failed_client = client_for(failed_buf, 'luau-lsp')
+    vim.system = system
+    assert(vim.wait(5000, function()
+        return table.concat(warnings, '\n'):find('SIMULATED_ROJO_FAILURE', 1, true) ~= nil
+    end), 'Rojo failure was not reported')
+    assert(not failed_client.settings['luau-lsp'].sourcemap.enabled)
+    completion(failed_client, failed_buf, 0, #('local value = Instance.'), 'new')
+    vim.api.nvim_buf_delete(failed_buf, { force = true })
+    print('PASS: generation cancellation and failure preserve Roblox APIs without loading missing maps')
 
     local nvim_buf = open(vim.fn.stdpath('config') .. '/lua/project.lua')
     local nvim_client = client_for(nvim_buf, 'lua_ls')
@@ -171,6 +235,52 @@ local function check()
     vim.cmd('LuaProjectUse auto')
     assert(project.detect(init_file).kind == 'love')
     print('PASS: explicit initialization, no overwrite and session override')
+
+    local inferred = write(fixture .. '/inferred/main.lua', { 'print("plain")' })
+    vim.fn.mkdir(fixture .. '/inferred/.git', 'p')
+    local inferred_buf = open(inferred)
+    local initial_client = client_for(inferred_buf, 'lua_ls')
+    local detect, detections = project.detect, 0
+    project.detect = function(...)
+        detections = detections + 1
+        return detect(...)
+    end
+    for _ = 1, 20 do
+        vim.api.nvim_exec_autocmds('BufEnter', { group = 'BreadProjectLabel', buffer = inferred_buf })
+    end
+    project.detect = detect
+    assert(detections == 0, 'switching cached buffers rescanned the project')
+    vim.api.nvim_buf_set_lines(inferred_buf, 0, -1, false, { 'function love.load()', 'end', 'love.graphics.print("hi")' })
+    vim.cmd.write()
+    assert(vim.wait(10000, function()
+        local current = vim.lsp.get_clients({ bufnr = inferred_buf, name = 'lua_ls' })[1]
+        return current and current.initialized and current.id ~= initial_client.id
+    end), 'LÖVE inference did not restart LuaLS')
+    local inferred_client = client_for(inferred_buf, 'lua_ls')
+    assert(vim.b[inferred_buf].bread_project_kind == 'love')
+    assert(inferred_client.config.settings.Lua.workspace.library[1]:find('love2d', 1, true))
+    completion(inferred_client, inferred_buf, 2, #('love.graphics.'), 'print')
+    vim.api.nvim_buf_set_lines(inferred_buf, 0, -1, false, { 'print("plain again")' })
+    vim.cmd.write()
+    assert(vim.wait(10000, function()
+        local current = vim.lsp.get_clients({ bufnr = inferred_buf, name = 'lua_ls' })[1]
+        return current and current.initialized and current.id ~= inferred_client.id
+    end), 'removing LÖVE callbacks did not refresh LuaLS')
+    assert(not client_for(inferred_buf, 'lua_ls').config.settings.Lua.workspace.library)
+    assert(project.search_root() == project.detect(inferred).root, 'search used a nested file directory')
+    vim.api.nvim_buf_set_lines(inferred_buf, 0, -1, false, { 'local value={x=1}', 'print(value.x)' })
+    vim.fn.maparg(',cf', 'n', false, true).callback()
+    assert(vim.wait(10000, function()
+        return vim.api.nvim_buf_get_lines(inferred_buf, 0, 1, false)[1]:find('local value = ', 1, true) ~= nil
+    end), 'manual LSP format did not format the buffer')
+    vim.api.nvim_win_set_cursor(0, { 1, 0 })
+    vim.cmd.normal('gcc')
+    assert(vim.api.nvim_buf_get_lines(inferred_buf, 0, 1, false)[1]:match('^%-%-'), 'native commenting failed')
+    vim.cmd.normal('gcc')
+    vim.api.nvim_buf_delete(inferred_buf, { force = true })
+    assert(not vim.api.nvim_buf_is_valid(inferred_buf) or not vim.b[inferred_buf].bread_project_cache,
+        'deleted buffer retained project cache')
+    print('PASS: cached switching, live LÖVE inference, project search root, formatting and native comments')
 
     -- Capture real jobs with pipes; headless Windows ConPTY bypasses buffers.
     vim.fn.jobstart = function(command, options)
@@ -207,6 +317,8 @@ end
 vim.defer_fn(function()
     local ok, err = xpcall(check, debug.traceback)
     vim.fn.jobstart = jobstart
+    vim.system = system
+    vim.lsp.handlers['window/showMessage'] = show_message
     if package.loaded.compile then require('compile').stop() end
     if not ok then
         vim.api.nvim_err_writeln(err)
