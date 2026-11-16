@@ -147,6 +147,18 @@ local function lua_settings(info)
     return settings
 end
 
+local function init_luau_diagnostics(client, result)
+    -- Restore document pulls disabled by the plugin's on_init workaround.
+    local provider = vim.deepcopy(result.capabilities.diagnosticProvider)
+    local settings = client.settings['luau-lsp'] or {}
+    if type(provider) == 'table' and not (settings.diagnostics or {}).workspace then
+        -- Neovim otherwise pulls the entire workspace on every refresh, even
+        -- when Luau returns only empty reports, creating buffers for every file.
+        provider.workspaceDiagnostics = false
+    end
+    client.server_capabilities.diagnosticProvider = provider
+end
+
 function M.setup(caps)
     -- Reclaim only our own mappings whose owning process no longer exists.
     -- Signal 0 checks liveness; EPERM/other errors leave the file untouched.
@@ -172,6 +184,37 @@ function M.setup(caps)
     vim.lsp.enable('lua_ls')
 
     local group = vim.api.nvim_create_augroup('BreadProjectLsp', { clear = true })
+    -- Luau pull diagnostics do not refresh reverse dependencies themselves.
+    -- Refresh on save/switch instead of checking dependents per keystroke.
+    vim.api.nvim_create_autocmd({ 'BufWritePost', 'BufLeave', 'BufEnter' }, {
+        group = group,
+        callback = function(event)
+            if vim.bo[event.buf].filetype ~= 'luau' then return end
+            -- Run after Neovim's normal change debounce and save notifications.
+            vim.defer_fn(function()
+                if not vim.api.nvim_buf_is_loaded(event.buf) then return end
+                for _, client in ipairs(vim.lsp.get_clients({ bufnr = event.buf, method = 'textDocument/diagnostic' })) do
+                    if client.name == 'luau-lsp' or client.name == 'luau_standard' then
+                        local function pull(buf)
+                            if vim.api.nvim_buf_is_loaded(buf) then
+                                client:request('textDocument/diagnostic', {
+                                    textDocument = { uri = vim.uri_from_bufnr(buf) },
+                                    identifier = client.server_capabilities.diagnosticProvider.identifier,
+                                }, nil, buf)
+                            end
+                        end
+                        -- Flush this buffer's pending changes before querying consumers.
+                        pull(event.buf)
+                        if event.event == 'BufWritePost' then
+                            for buf in pairs(client.attached_buffers) do
+                                if buf ~= event.buf then pull(buf) end
+                            end
+                        end
+                    end
+                end
+            end, 200)
+        end,
+    })
     vim.api.nvim_create_autocmd({ 'BufDelete', 'BufWipeout', 'LspDetach' }, {
         group = group,
         callback = function(event)
@@ -220,8 +263,11 @@ function M.setup_luau(caps)
     vim.lsp.config('luau-lsp', {
         capabilities = vim.tbl_deep_extend('force', caps, {
             workspace = { didChangeWatchedFiles = { dynamicRegistration = true } },
-            textDocument = { diagnostic = vim.NIL },
+            -- Override the plugin's push-diagnostics workaround: diagnostics
+            -- should be cancellable requests, not work done inside didChange.
+            textDocument = { diagnostic = vim.lsp.protocol.make_client_capabilities().textDocument.diagnostic },
         }),
+        on_init = init_luau_diagnostics,
         root_dir = function(buf, on_dir)
             local info = project.for_buffer(buf)
             if info.kind == 'roblox' then project.select_rojo(info, function() on_dir(info.root) end) end
@@ -256,6 +302,7 @@ function M.setup_luau(caps)
         filetypes = { 'luau' }, capabilities = caps,
         init_options = { fflags = { LuauSolverV2 = 'true' } },
         settings = { ['luau-lsp'] = { platform = { type = 'standard' } } },
+        on_init = init_luau_diagnostics,
         root_dir = function(buf, on_dir)
             local info = project.for_buffer(buf)
             if info.kind ~= 'roblox' then on_dir(info.root) end

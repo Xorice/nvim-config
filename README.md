@@ -148,7 +148,7 @@ NVIM_NO_INSTALL=1 NVIM_NO_BOOTSTRAP=1 NVIM_NO_AI=1 nvim --headless '+luafile scr
 | `,cf` | 使用当前语言服务手动格式化；不自动在保存时格式化 |
 | `Tab` | 接受补全；没有候选时跳到下一个 snippet 占位或正常缩进 |
 | `Shift+Tab` | 返回上一个 snippet 占位 |
-| `Enter` | 正常换行，不确认补全 |
+| `Enter` | 接受补全；没有候选时正常换行 |
 | `K` | 查看光标处的函数 / 字段说明；再次按下进入说明窗口 |
 | `Ctrl+D` / `Ctrl+U` | 说明弹窗打开时向下 / 向上滚动说明，否则滚动代码 |
  
@@ -209,6 +209,8 @@ NVIM_NO_INSTALL=1 NVIM_NO_BOOTSTRAP=1 NVIM_NO_AI=1 nvim --headless '+luafile scr
 `love/lua` 创建 `.luarc.json`，`luau/roblox` 创建采用 `nonstrict` 的 `.luaurc`；已有配置不会覆盖。`roblox` 要求已有 Rojo 项目，编辑器不代建场景结构。LÖVE 初始化只写可移植的 LuaJIT 和 `love.filesystem.load` 设置，不含本机路径。LÖVE 类型库作为固定版本插件安装在 Neovim 数据目录，按项目加载。
 
 无法识别或需要临时纠正时使用 `:LuaProjectUse love|lua|luau|roblox`，`:LuaProjectUse auto` 恢复自动识别。这些选择仅在当前会话有效，没有额外的项目登记文件。
+
+Luau 使用可取消的拉取式诊断，避免在处理每次文本改动时同步重算引用它的模块，减少复杂 UI 类型的补全延迟。默认关闭全工作区诊断请求，避免刷新时为整个项目创建隐藏缓冲区、卡住界面；如需全工作区诊断，在启动语言服务前配置 `diagnostics.workspace = true`。当前文件仍自动诊断；保存时刷新该语言服务已打开文件的诊断，切换文件时也会刷新，以补足服务端的跨文件诊断更新。修改依赖后，其他文件的错误可能到保存或切回该文件时才更新。首次加载大型依赖图仍可能需要较长时间。
 
 Roblox API 定义和文档由 `luau-lsp.nvim` 下载、共享并更新缓存。Rojo sourcemap 在 Roblox 语言服务连接后自动维护，以项目根目录运行，因此兼容 Rokit 等项目工具链。启动时先保留 Roblox API 提示，后台生成并校验首份映射后才启用实例路径提示，避免读取尚未生成的文件。缓存映射内容发生变化时会主动刷新实例提示，支持新建、删除和重命名模块。每个项目复用一个监听进程，文件写到 `stdpath('cache')/bread/sourcemaps/`；关闭该项目最后一个脚本或退出 Neovim 时停止监听、释放文件监听及防抖计时器，并删除本次映射。监听错误输出仅保留最后 8 KiB；30 秒内未生成有效映射会停止监听并提示原因。强制终止后留下的映射会在下次启动时按所属进程是否存在清理。
 

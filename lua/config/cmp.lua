@@ -19,7 +19,10 @@ if vim.g.bread_codeium_enabled then
 end
 
 require("blink.cmp").setup {
-    keymap  = { preset = "super-tab" },
+    keymap  = {
+        preset = "super-tab",
+        ["<CR>"] = { "select_and_accept", "fallback" },
+    },
     sources = {
         default = sources,
         providers = {

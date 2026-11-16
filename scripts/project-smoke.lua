@@ -4,6 +4,17 @@ local project = require('project')
 local fixture = vim.fn.tempname() .. ' lua-project-check & paths'
 local errors, warnings, output = {}, {}, ''
 local trace = {}
+local workspace_requests = 0
+vim.api.nvim_create_autocmd('LspRequest', { callback = function(event)
+    local request = event.data.request
+    local client = vim.lsp.get_client_by_id(event.data.client_id)
+    if request.type == 'pending' and request.method == 'workspace/diagnostic'
+        and client and (client.name == 'luau-lsp' or client.name == 'luau_standard') then
+        workspace_requests = workspace_requests + 1
+    end
+end })
+local diagnosed = {}
+vim.api.nvim_create_autocmd('DiagnosticChanged', { callback = function(event) diagnosed[event.buf] = true end })
 local exit_codes = {}
 vim.api.nvim_create_autocmd({ 'LspAttach', 'LspDetach' }, { callback = function(event)
     local client = vim.lsp.get_client_by_id(event.data.client_id)
@@ -75,9 +86,10 @@ local function check()
     local love = write(fixture .. '/love/src/main.lua', { 'function love.load()', '  print("LOVE_OK")', '  love.event.quit()', 'end', 'function love.draw() love.graphics.print("ok") end' })
     write(fixture .. '/love/src/conf.lua', { 'function love.conf(t)', '  t.window = false', '  t.modules.audio = false', 'end' })
     write(fixture .. '/love/.luarc.jsonc', { '{', '  // LÖVE settings; no machine paths', '  "runtime.version": "LuaJIT",', '  "runtime.special": { "love.filesystem.load": "loadfile", /* trailing comment */ },', '}' })
-    local roblox = write(fixture .. '/roblox/src/init.lua', { 'local part = Instance.new("Part")', 'part.Anchored = true', 'local n: number = 1', 'print(n)', 'local child = require(script.module)', 'print(child.value)' })
+    local roblox = write(fixture .. '/roblox/src/init.lua', { 'local part = Instance.new("Part")', 'part.Anchored = true', 'local n: number = 1', 'print(n)', 'local child = require(script.module)', 'print(child.value)', 'local checked: number = child.value', 'print(checked)' })
     local new_module = write(fixture .. '/roblox/src/module.luau', { 'return { value = 1 }' })
     write(fixture .. '/roblox/default.project.json', { '{"name":"Check","tree":{"$className":"DataModel","ReplicatedStorage":{"$className":"ReplicatedStorage","Shared":{"$path":"src"}}}}' })
+    write(fixture .. '/roblox/.luaurc', { '{"languageMode":"strict"}' })
     write(fixture .. '/roblox/rokit.toml', { '[tools]', 'rojo = "rojo-rbx/rojo@7.7.1"' })
     local standard = write(fixture .. '/luau/main.luau', { 'local value: number = 1', 'print(value)' })
     write(fixture .. '/luau/.luaurc', { '{"languageMode":"nonstrict"}' })
@@ -116,13 +128,18 @@ local function check()
     local standard_buf = open(standard)
     local standard_client = client_for(standard_buf, 'luau_standard')
     assert(standard_client.config.init_options.fflags.LuauSolverV2 == 'true')
+    assert(standard_client:supports_method('textDocument/diagnostic'), 'standalone Luau must use pull diagnostics')
+    assert(not standard_client:supports_method('workspace/diagnostic'), 'disabled workspace diagnostics must not create hidden buffers')
     print('PASS: real LuaLS diagnostics, LÖVE API completion and standalone Luau isolation')
 
     local on_exit = vim.lsp.config['luau-lsp'].on_exit
-    vim.lsp.config('luau-lsp', { on_exit = function(code, signal, id)
-        exit_codes[id] = code
-        on_exit(code, signal, id)
-    end })
+    vim.lsp.config('luau-lsp', {
+        settings = { ['luau-lsp'] = { diagnostics = { strictDatamodelTypes = true } } },
+        on_exit = function(code, signal, id)
+            exit_codes[id] = code
+            on_exit(code, signal, id)
+        end,
+    })
     -- Model a cold/slow Rokit launch and a partially written first sourcemap.
     local rojo_starts, owned_job = 0, nil
     local function delayed_rojo(command, options, on_exit)
@@ -144,6 +161,9 @@ local function check()
     vim.lsp.config['luau-lsp'].root_dir(roblox_buf, function(root) detected_root = root end)
     assert(detected_root == project.detect(roblox).root, 'LSP root callback failed')
     local roblox_client = client_for(roblox_buf, 'luau-lsp')
+    assert(type(roblox_client.capabilities.textDocument.diagnostic) == 'table', 'plugin disabled pull diagnostic capabilities')
+    assert(roblox_client:supports_method('textDocument/diagnostic'), 'plugin removed the server diagnostic provider')
+    assert(not roblox_client:supports_method('workspace/diagnostic'), 'Roblox must not pull disabled workspace diagnostics')
     vim.system = system
     assert(rojo_starts == 1, 'expected one delayed sourcemap process')
     assert(roblox_client.config.init_options.fflags.LuauSolverV2 == 'true')
@@ -165,8 +185,30 @@ local function check()
         return table.concat(vim.fn.readfile(map_path), '\n'):find('extra', 1, true) ~= nil
     end), 'sourcemap watcher did not update after creating a module')
     completion(roblox_client, roblox_buf, 4, #('local child = require(script.'), 'extra', 5000)
+    -- Establish the dependency's inferred type before testing invalidation.
+    local child_type = roblox_client:request_sync('textDocument/hover', {
+        textDocument = { uri = vim.uri_from_bufnr(roblox_buf) }, position = { line = 5, character = 15 },
+    }, 5000, roblox_buf)
+    assert(child_type and child_type.result and child_type.result.contents.value:find('number', 1, true),
+        'module value type did not resolve before dependency changes')
     local newer_buf = open(new_module)
     assert(client_for(newer_buf, 'luau-lsp').id == roblox_client.id, 'same project should reuse one client')
+    assert(vim.wait(5000, function() return diagnosed[newer_buf] end, 20), 'initial module diagnostics did not arrive')
+    local function has_type_error()
+        for _, diagnostic in ipairs(vim.diagnostic.get(roblox_buf)) do
+            if diagnostic.severity == vim.diagnostic.severity.ERROR then return true end
+        end
+        return false
+    end
+    vim.api.nvim_buf_set_lines(newer_buf, 0, -1, false, { 'return { value = "wrong" }' })
+    vim.cmd.write()
+    assert(vim.wait(5000, has_type_error, 20), 'saving a dependency did not refresh the open consumer diagnostics')
+    vim.api.nvim_buf_set_lines(newer_buf, 0, -1, false, { 'return { value = 1 }' })
+    open(roblox)
+    assert(vim.wait(5000, function() return not has_type_error() end, 20),
+        'entering the consumer did not clear a stale dependency diagnostic')
+    print('PASS: Luau pull diagnostics refresh dependencies on save and buffer entry')
+    assert(workspace_requests == 0, 'Luau configuration refresh requested whole-workspace diagnostics')
     local proc_count = #vim.lsp.get_clients({ name = 'luau-lsp' })
     assert(proc_count == 1)
     vim.api.nvim_buf_delete(roblox_buf, { force = true })
