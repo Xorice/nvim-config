@@ -17,6 +17,12 @@ local function check()
     assert(#require('dap').configurations.cpp > 0, 'C++ debug configuration missing')
     assert(#require('dap').configurations.python > 0, 'Python debug configuration missing')
 
+    vim.cmd('Neotree show')
+    assert(vim.bo.filetype == 'neo-tree', 'file explorer did not open')
+    vim.cmd('Neotree close')
+    assert(#errors == 0, table.concat(errors, '\n'))
+    print('PASS: file explorer initialized and opened without errors')
+
     local fixture_dir = vim.fn.tempname() .. ' nvim smoke & paths'
     vim.fn.mkdir(fixture_dir, 'p')
     -- Windows headless ConPTY writes directly to stdout. Capture the same jobs

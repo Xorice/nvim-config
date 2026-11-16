@@ -1,10 +1,10 @@
-# 🍞 面包 NVIM (Nightly 0.12.x)
+# 🍞 面包 NVIM (Nightly)
 
 面包人专用 nvim 配置文件（大概
 
 ## ✨ 特性
 
-- **Core**: Neovim 0.12 Nightly
+- **Core**: Neovim 0.12+（已验证 0.13 Nightly）
 - **AI**: Codeium (Free & Fast)
 - **LSP**: Mason + Blink.cmp 
 - **UI**: VS Code Dark 2026（透明背景）+ Lualine + Smear Cursor
@@ -59,6 +59,8 @@ nvim
 
 `BootstrapDeps` 补系统工具；`InstallTools` 补语言工具和解析器。网络或权限错误会显示在安装终端 / Mason 日志中，不会标记为安装成功。
 
+`:UpdateTools` 主动更新 Mason 管理的语言服务和调试器；完成后重启 Neovim。Luau LSP 至少使用 1.70.1，旧版本会在正常工具安装流程中升级，不会每次启动都追踪最新版。
+
 也可以先在外部终端执行安装脚本（不需要启动 Neovim）：
 
 ```powershell
@@ -83,6 +85,8 @@ $env:NVIM_NO_INSTALL = '1'
 $env:NVIM_NO_BOOTSTRAP = '1'
 $env:NVIM_NO_AI = '1'
 nvim --headless '+luafile scripts/smoke.lua'
+# 验证项目识别、真实 Lua/Luau API 提示、sourcemap 和运行进程清理
+nvim --headless '+luafile scripts/project-smoke.lua'
 Remove-Item Env:NVIM_NO_INSTALL, Env:NVIM_NO_BOOTSTRAP, Env:NVIM_NO_AI
 ```
 
@@ -109,7 +113,9 @@ NVIM_NO_INSTALL=1 NVIM_NO_BOOTSTRAP=1 NVIM_NO_AI=1 nvim --headless '+luafile scr
  
 | 按键 | 功能 |
 |------|------|
-| `,rc` | 编译并运行当前文件 |
+| `,rc` | 普通语言编译/运行当前文件；LÖVE 运行整个项目 |
+| `,rs` | 停止当前运行任务 |
+| `,ro` | 重新显示运行输出 |
 | `,r` | DAP 开始 / 继续调试 |
 | `,b` | 切换断点 |
 | `,di` | Step Into |
@@ -150,6 +156,39 @@ NVIM_NO_INSTALL=1 NVIM_NO_BOOTSTRAP=1 NVIM_NO_AI=1 nvim --headless '+luafile scr
 | 按键 | 功能 |
 |------|------|
 | `,lr` | 运行 LÖVE 项目 |
+
+重复运行会先停止上一次任务，输出保留在受管理的终端中；终端输入模式下按两次 `Esc` 返回普通模式。关闭输出窗口不会停止程序，使用 `,rs` 停止，`,ro` 重新打开输出。退出 Neovim 时停止当前任务。普通 Lua 和 LÖVE 运行不创建 `__debug__`，该目录仅用于 C/C++ 编译。
+
+## Lua / LÖVE / Roblox 项目环境
+
+状态栏显示当前 Lua 文件使用的 `lua`、`love`、`roblox`、`luau` 或 `nvim` 环境。`:LuaProjectInfo` 查看项目根目录、LÖVE 入口和 Rojo 配置路径。按项目使用语言服务，不把 `vim`、`love`、Roblox 全局变量混在同一环境里。
+
+| 项目 | 识别依据 | 提示与运行 |
+|------|----------|------------|
+| Roblox / Rojo | `*.project.json`，优先 `default.project.json`；多个非默认配置时选择一次 | `.lua`、`.luau` 均使用 Luau 高亮和 Roblox 语言服务；在 Studio 中运行 |
+| 独立 Luau | `.luaurc` 或 `.luau` 文件 | 使用不加载 Roblox API 的 Luau 语言服务 |
+| LÖVE | `.luarc.json/jsonc` 中的 LÖVE 设置；或 `main.lua/conf.lua` 中的 LÖVE 回调 | LuaJIT + LÖVE 11.5 类型库；从根目录或 `src/` 中的 `main.lua` 启动 |
+| 普通 Lua | `.luarc.json/jsonc` 或普通 `.lua` 文件 | LuaLS；运行当前脚本 |
+| Neovim 配置 | 当前 Neovim 配置目录 | LuaJIT + Neovim 类型定义 |
+
+最近的明确项目配置优先于源码推断；例如 Rojo 仓库的 `tools/` 内有自己的 `.luarc.json` 时，其中的工具脚本仍按普通 Lua 处理。只叫 `main.lua` 并不会被判定为 LÖVE。已有项目配置优先，Luau 不自动强制 `strict`，新版类型求解器默认启用。
+
+新项目由你主动初始化，打开文件不会生成配置：
+
+```vim
+:LuaProjectInit love
+:LuaProjectInit lua
+:LuaProjectInit luau
+:LuaProjectInit roblox
+```
+
+`love/lua` 创建 `.luarc.json`，`luau/roblox` 创建采用 `nonstrict` 的 `.luaurc`；已有配置不会覆盖。`roblox` 要求已有 Rojo 项目，编辑器不代建场景结构。LÖVE 初始化只写可移植的 LuaJIT 和 `love.filesystem.load` 设置，不含本机路径。LÖVE 类型库作为固定版本插件安装在 Neovim 数据目录，按项目加载。
+
+无法识别或需要临时纠正时使用 `:LuaProjectUse love|lua|luau|roblox`，`:LuaProjectUse auto` 恢复自动识别。这些选择仅在当前会话有效，没有额外的项目登记文件。
+
+Roblox API 定义和文档由 `luau-lsp.nvim` 下载、共享并更新缓存。Rojo sourcemap 在 Roblox 语言服务连接后自动维护，以项目根目录运行，因此兼容 Rokit 等项目工具链。每个项目复用一个监听进程，文件写到 `stdpath('cache')/bread/sourcemaps/`；关闭该项目最后一个脚本或退出 Neovim 时停止监听并删除本次映射。监听错误输出仅保留最后 8 KiB。强制终止后留下的映射会在下次启动时按所属进程是否存在清理。
+
+Rojo 的 `serve/build` 仍在外部终端操作，编辑器不启动 Studio 桥接。没有安装项目的 Rojo 工具时仍有 Roblox API 提示，实例树和项目路径提示需要可用的 sourcemap。验证 `project-smoke.lua` 需要 LÖVE 和项目可用的 Rojo（测试项目使用 Rokit 的 `rojo-rbx/rojo@7.7.1`）。
  
 ## 🔧 支持的语言
  

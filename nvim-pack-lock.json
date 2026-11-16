@@ -28,6 +28,10 @@
       "rev": "7c4faa3540d0781a28588cafbd4dd187a28ac6e3",
       "src": "https://github.com/lewis6991/gitsigns.nvim"
     },
+    "love2d": {
+      "rev": "c630dd883cda128a19d850bd5e3911110b271609",
+      "src": "https://github.com/LuaCATS/love2d"
+    },
     "love2d.nvim": {
       "rev": "25715394680590f56aab90390d430cab0dc46808",
       "src": "https://github.com/S1M0N38/love2d.nvim"
@@ -57,7 +61,7 @@
       "src": "https://github.com/williamboman/mason.nvim"
     },
     "neo-tree.nvim": {
-      "rev": "4597f1e0b928a78d5fe1b3d33d1a5141453ba839",
+      "rev": "3fc291dcb9a59af4ca1b788cafd922f96f481a50",
       "src": "https://github.com/nvim-neo-tree/neo-tree.nvim"
     },
     "nui.nvim": {

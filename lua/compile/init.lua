@@ -60,9 +60,35 @@ local function get_extra_flags(file, link_map)
 end
 
 local function close_terminal()
-    if M.terminal_window and vim.api.nvim_win_is_valid(M.terminal_window) then
-        vim.api.nvim_win_close(M.terminal_window, true)
+    if M.terminal_window and vim.api.nvim_win_is_valid(M.terminal_window)
+        and vim.api.nvim_win_get_buf(M.terminal_window) == M.terminal_buffer then
+        pcall(vim.api.nvim_win_close, M.terminal_window, true)
     end
+    if M.terminal_buffer and vim.api.nvim_buf_is_valid(M.terminal_buffer) then
+        vim.api.nvim_buf_delete(M.terminal_buffer, { force = true })
+    end
+    M.terminal_window, M.terminal_buffer = nil, nil
+end
+
+function M.stop()
+    M.run_id = (M.run_id or 0) + 1
+    if M.job then vim.fn.jobstop(M.job); M.job = nil end
+end
+
+function M.output()
+    if not M.terminal_buffer or not vim.api.nvim_buf_is_valid(M.terminal_buffer) then
+        vim.notify('还没有运行输出。')
+        return
+    end
+    if M.terminal_window and vim.api.nvim_win_is_valid(M.terminal_window)
+        and vim.api.nvim_win_get_buf(M.terminal_window) == M.terminal_buffer then
+        vim.api.nvim_set_current_win(M.terminal_window)
+        return
+    end
+    vim.cmd('botright vsplit')
+    M.terminal_window = vim.api.nvim_get_current_win()
+    vim.api.nvim_win_set_buf(M.terminal_window, M.terminal_buffer)
+    vim.cmd('vertical resize ' .. M.config.terminal_width)
 end
 
 local function open_terminal(cmd, dir, on_exit)
@@ -73,56 +99,89 @@ local function open_terminal(cmd, dir, on_exit)
     close_terminal()
     vim.cmd('botright vnew')
     M.terminal_window = vim.api.nvim_get_current_win()
+    M.terminal_buffer = vim.api.nvim_get_current_buf()
     vim.cmd('vertical resize ' .. M.config.terminal_width)
-    local job = vim.fn.jobstart(cmd, { term = true, cwd = dir, on_exit = on_exit })
+    local run_id = M.run_id
+    local job
+    job = vim.fn.jobstart(cmd, { term = true, cwd = dir, on_exit = function(id, code, event)
+        if M.job == id then M.job = nil end
+        if run_id ~= M.run_id then return end
+        if on_exit then on_exit(id, code, event)
+        elseif code ~= 0 then
+            vim.schedule(function() vim.notify('程序已退出，退出码 ' .. code .. '；详情见运行终端。', vim.log.levels.WARN) end)
+        end
+    end })
     if job <= 0 then
         vim.notify('无法启动: ' .. cmd[1], vim.log.levels.ERROR)
         return
     end
+    M.job = job
+    vim.keymap.set('t', '<Esc><Esc>', '<C-\\><C-n>', { buffer = M.terminal_buffer, desc = '退出终端输入模式' })
     vim.cmd('startinsert')
 end
 
 -------------------------------------------------------------------------------
 -- 主入口
 -------------------------------------------------------------------------------
-function M.run()
+function M.run(opts)
+    opts = opts or {}
     local file = vim.fn.expand('%:p')
     local name = vim.fn.expand('%:t:r')
     local dir  = vim.fn.expand('%:p:h')
     local ext  = vim.fn.expand('%:e')
 
-    local runner = find_runner(ext)
+    local info = require('project').detect(file)
+    if info.kind == 'roblox' then
+        vim.notify('Roblox 脚本请在 Studio 中运行；Rojo serve/build 继续使用外部终端。', vim.log.levels.INFO)
+        return
+    end
+    local runner
+    if info.kind == 'love' or opts.love then
+        if not info.entry then
+            vim.notify('未找到 LÖVE 入口：项目根目录或 src/ 中需要有 main.lua。', vim.log.levels.WARN)
+            return
+        end
+        local love = require('platform').find({ 'lovec', 'love' })
+        if not love then vim.notify('请先安装 LÖVE，并把它加入 PATH。', vim.log.levels.WARN); return end
+        runner = { run = function() return { love, info.entry } end }
+        dir = info.entry
+        vim.cmd('wall')
+    else runner = find_runner(ext) end
     if not runner then
         vim.notify('不支持的文件类型: .' .. ext, vim.log.levels.WARN)
         return
     end
 
-    vim.cmd('write')
-
-    local debug_dir = dir .. '/' .. M.config.debug_dir
-    local out       = debug_dir .. '/' .. name .. (require('platform').windows and '.exe' or '')
-    vim.fn.mkdir(debug_dir, 'p')
-
-    local gitignore = debug_dir .. '/.gitignore'
-    if vim.fn.filereadable(gitignore) == 0 then
-        vim.fn.writefile({ '*' }, gitignore)
-    end
+    if vim.bo.modified then vim.cmd('write') end
+    M.stop()
+    local run_id = M.run_id
 
     if runner.compile then
+        local debug_dir = dir .. '/' .. M.config.debug_dir
+        local out = debug_dir .. '/' .. name .. (require('platform').windows and '.exe' or '')
+        vim.fn.mkdir(debug_dir, 'p')
+        local gitignore = debug_dir .. '/.gitignore'
+        if vim.fn.filereadable(gitignore) == 0 then vim.fn.writefile({ '*' }, gitignore) end
         local extra   = get_extra_flags(file, runner.link_map)
         local compile = runner.compile(file, out)
         local run     = runner.run(file, out)
         vim.list_extend(compile, extra)
         open_terminal(compile, dir, function(_, code)
             vim.schedule(function()
+                if run_id ~= M.run_id then return end
                 if code == 0 then open_terminal(run, dir)
                 else vim.notify('编译失败，退出码 ' .. code .. '，详情见编译终端。', vim.log.levels.ERROR) end
             end)
         end)
     else
-        open_terminal(runner.run(file, out), dir)
+        open_terminal(runner.run(file), dir)
     end
 end
+
+vim.api.nvim_create_autocmd('VimLeavePre', {
+    group = vim.api.nvim_create_augroup('BreadRunner', { clear = true }),
+    callback = M.stop,
+})
 
 -- 手动注册语言（在语言文件之外临时添加用）
 function M.add(name, runner)

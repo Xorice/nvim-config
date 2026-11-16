@@ -42,6 +42,9 @@ require('lualine').setup {
         lualine_c = { { 'filename', path = 1 } },
         lualine_x = {
             { codeium_status },
+            { function()
+                return vim.b.bread_project_kind or ''
+            end },
             'encoding',
             'filetype'
         },

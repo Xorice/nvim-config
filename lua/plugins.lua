@@ -37,6 +37,7 @@ vim.pack.add({
     { src = "https://github.com/windwp/nvim-autopairs" },
     { src = "https://github.com/OXY2DEV/markview.nvim" },
     { src = "https://github.com/S1M0N38/love2d.nvim" },
+    { src = "https://github.com/LuaCATS/love2d" },
     { src = "https://github.com/lopi-py/luau-lsp.nvim" },
     { src = "https://github.com/numtostr/comment.nvim" },
 

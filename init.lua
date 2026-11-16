@@ -1,10 +1,11 @@
--- Nightly 0.12.x
+-- Neovim 0.12+ (Nightly)
 -- * 面包 NVIM
 
 vim.opt.runtimepath:prepend(vim.fn.stdpath('config'))
 
 require('platform').setup()
 require('options')
+require('project').setup()
 if not require('bootstrap').setup() then return end
 local installed, install_error = pcall(require, 'plugins')
 if not installed then

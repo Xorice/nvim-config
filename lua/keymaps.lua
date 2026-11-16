@@ -36,13 +36,7 @@ key('n', '<A-Right>', ss.resize_right, { desc = 'Resize Right' })
 -- Love2D / Git
 -------------------------------------------------------------------------------
 key('n', '<leader>lr', function()
-    local love = require('platform').find({ 'lovec', 'love' })
-    if not love then
-        vim.notify('请先安装 LÖVE，并把它加入 PATH。', vim.log.levels.WARN)
-        return
-    end
-    local project = vim.fn.isdirectory('src') == 1 and 'src' or '.'
-    vim.fn.jobstart({ love, project }, { detach = true })
+    require('compile').run({ love = true })
 end, { desc = '󰠫 Run LÖVE' })
 key('n', '<leader>gs', ':Neotree float git_status<CR>',     { desc = '󰊢 Git Status Float' })
 
@@ -101,3 +95,5 @@ key('v', '<S-Down>', 'j', { noremap = true, silent = true })
 -- 编译运行 
 -------------------------------------------------------------------------------
 key('n', '<leader>rc', function() require('compile').run() end, { desc = '󰑮 Compile & Run' })
+key('n', '<leader>rs', function() require('compile').stop() end, { desc = 'Stop Run' })
+key('n', '<leader>ro', function() require('compile').output() end, { desc = 'Show Run Output' })
