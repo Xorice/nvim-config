@@ -2,6 +2,8 @@
 
 面包人专用 nvim 配置文件（大概
 
+![面包 NVIM 预览](docs/readme-preview.gif)
+
 ## ✨ 特性
 
 - **Core**: Neovim 0.12+（已验证 0.13 Nightly）
