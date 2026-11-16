@@ -197,13 +197,29 @@ function M.checkpoint()
     end
 end
 
+local function nonblocking_messages()
+    -- Nightly builds expose this option as either a list or a key/value table
+    -- through vim.opt:get(). The raw comma-separated value is stable across both.
+    local options = vim.split(vim.o.messagesopt, ',', { plain = true, trimempty = true })
+    options = vim.tbl_filter(function(option)
+        return option ~= 'hit-enter' and not option:match('^wait:')
+    end, options)
+    options[#options + 1] = 'wait:0'
+    vim.o.messagesopt = table.concat(options, ',')
+    vim.o.more = false
+end
+
 -- Yield between stages instead of holding the main loop in one scheduled callback.
 -- Individual synchronous plugin setup functions can still briefly stop UI updates.
 function M.run(steps)
-    local state = { steps = steps, current = 0, angle = 0, started = uv.hrtime(), errors = {} }
+    local state = { steps = steps, current = 0, angle = 0, started = uv.hrtime(), errors = {}, notifications = {} }
     for _, step in ipairs(steps) do step.status = 'pending' end
     local function close()
         if active == state then active = nil end
+        if state.notify then
+            if vim.notify == state.notify.wrapper then vim.notify = state.notify.original end
+            vim.o.messagesopt, vim.o.more = state.messagesopt, state.more
+        end
         for name, lookup in pairs(state.lookups or {}) do
             if vim.fn[name] == lookup.wrapper then vim.fn[name] = lookup.original end
         end
@@ -219,11 +235,44 @@ function M.run(steps)
         end
     end
     local function finish()
+        if state.finished then return end
         state.finished = true
         close()
-        for _, message in ipairs(state.errors) do
-            vim.schedule(function() vim.notify(message, vim.log.levels.ERROR) end)
+        if #state.notifications == 0 and #state.errors == 0 then return end
+        vim.schedule(function()
+            local messagesopt, more = vim.o.messagesopt, vim.o.more
+            local ok, err = xpcall(function()
+                if state.notify then nonblocking_messages(); vim.cmd.redraw() end
+                local level = vim.log.levels.INFO
+                for _, notification in ipairs(state.notifications) do
+                    level = math.max(level, notification.level or vim.log.levels.INFO)
+                    vim.notify(notification.message, notification.level, notification.opts)
+                end
+                for _, message in ipairs(state.errors) do
+                    level = vim.log.levels.ERROR
+                    vim.notify(message, level)
+                end
+                if state.notify then
+                    -- Full messages stay in :messages; even a narrow terminal must not wait for input.
+                    vim.cmd.redraw()
+                    local summary = ('Startup: %d message(s), :messages'):format(#state.notifications + #state.errors)
+                    local width = math.max(0, math.min(vim.o.columns - 1, vim.v.echospace))
+                    local highlight = level >= vim.log.levels.ERROR and 'ErrorMsg'
+                        or level >= vim.log.levels.WARN and 'WarningMsg' or 'None'
+                    api.nvim_echo({ { summary:sub(1, width), highlight } }, false, {})
+                end
+            end, debug.traceback)
+            if state.notify then vim.o.messagesopt, vim.o.more = messagesopt, more end
+            if not ok then error(err) end
+        end)
+    end
+    local function render(callback)
+        local ok, err = xpcall(callback, debug.traceback)
+        if not ok then
+            state.errors[#state.errors + 1] = 'Startup display failed:\n' .. err
+            finish()
         end
+        return ok
     end
     local function execute(step)
         local started = uv.hrtime()
@@ -239,7 +288,7 @@ function M.run(steps)
         local step = steps[state.current]
         if not step then finish(); return end
         step.status = 'running'
-        draw(state)
+        if not render(function() draw(state) end) then return end
         vim.defer_fn(function()
             if state.finished then return end
             if execute(step) then advance() else finish() end
@@ -247,27 +296,38 @@ function M.run(steps)
     end
     local function start()
         active = state
+        state.messagesopt, state.more = vim.o.messagesopt, vim.o.more
+        state.notify = { original = vim.notify }
+        state.notify.wrapper = function(message, level, opts)
+            if state.finished then return state.notify.original(message, level, opts) end
+            state.notifications[#state.notifications + 1] = { message = message, level = level, opts = opts }
+        end
+        vim.notify = state.notify.wrapper
+        -- Also cover direct :echo/print output, which does not pass through vim.notify.
+        nonblocking_messages()
         -- Keep the first frames transparent too, before the actual theme loads.
         vim.cmd('highlight Normal guibg=NONE ctermbg=NONE')
         vim.cmd('highlight NormalNC guibg=NONE ctermbg=NONE')
         highlights()
         state.group = api.nvim_create_augroup('BreadStartup', { clear = true })
-        local function window(zindex)
+        local function window(zindex, buffer_field, window_field)
             local buf = api.nvim_create_buf(false, true)
+            state[buffer_field] = buf
             vim.bo[buf].bufhidden = 'wipe'
             local win = api.nvim_open_win(buf, false, {
                 relative = 'editor', row = 0, col = 0, width = 1, height = 1,
                 style = 'minimal', border = 'none', focusable = false, mouse = false,
                 noautocmd = true, zindex = zindex,
             })
+            state[window_field] = win
             vim.wo[win].winhighlight = 'Normal:BreadBootNormal,NormalNC:BreadBootNormal,EndOfBuffer:BreadBootNormal'
             vim.wo[win].winblend = 0
             return buf, win
         end
         -- Opaque cells with the terminal's default background hide all unfinished UI text.
-        state.backdropbuf, state.backdrop = window(300)
-        state.buf, state.win = window(310)
-        state.logbuf, state.logwin = window(311)
+        window(300, 'backdropbuf', 'backdrop')
+        window(310, 'buf', 'win')
+        window(311, 'logbuf', 'logwin')
         -- These lookups can stall on Windows PATH entries. Refresh immediately
         -- after they return, including calls made inside third-party plugins.
         -- Restore every wrapper when the startup overlay closes.
@@ -294,7 +354,7 @@ function M.run(steps)
             local now = uv.hrtime()
             if not state.finished and now + 2e6 >= next_frame
                 and (now - state.started) / 1e9 - (state.drawn or 0) >= .008 then
-                draw(state)
+                if not render(function() draw(state) end) then return end
                 next_frame = math.max(next_frame + 1e9 / 60, now + 8e6)
             end
         end))
@@ -305,9 +365,9 @@ function M.run(steps)
         if arg == '--headless' or arg:match('^%-[eEs]+$') or arg == '-l' then batch = true end
     end
     if #api.nvim_list_uis() > 0 then
-        start()
+        render(start)
     elseif not batch then
-        api.nvim_create_autocmd('UIEnter', { once = true, callback = start })
+        api.nvim_create_autocmd('UIEnter', { once = true, callback = function() render(start) end })
     else
         for i, step in ipairs(steps) do
             state.current = i
