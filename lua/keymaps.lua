@@ -43,13 +43,12 @@ key('n', '<leader>di', debug_action('step_into'),        { desc = '󰆹 Debug: S
 key('n', '<leader>do', debug_action('step_over'),        { desc = '󰆸 Debug: Step Over' })
 
 -------------------------------------------------------------------------------
--- 窗口大小调整 (smart-splits)
+-- 当前窗口大小调整（Neovim 原生命令）
 -------------------------------------------------------------------------------
-local ss = require('smart-splits')
-key('n', '<A-Left>',  ss.resize_left,  { desc = 'Resize Left' })
-key('n', '<A-Down>',  ss.resize_down,  { desc = 'Resize Down' })
-key('n', '<A-Up>',    ss.resize_up,    { desc = 'Resize Up' })
-key('n', '<A-Right>', ss.resize_right, { desc = 'Resize Right' })
+key('n', '<A-Left>',  '<Cmd>vertical resize -3<CR>', { desc = 'Narrower Window' })
+key('n', '<A-Down>',  '<Cmd>resize +3<CR>',          { desc = 'Taller Window' })
+key('n', '<A-Up>',    '<Cmd>resize -3<CR>',          { desc = 'Shorter Window' })
+key('n', '<A-Right>', '<Cmd>vertical resize +3<CR>', { desc = 'Wider Window' })
 
 -------------------------------------------------------------------------------
 -- Love2D / Git

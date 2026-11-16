@@ -1,3 +1,14 @@
+-- Subtle indent guides; search and explorer keep their existing plugins.
+require('snacks').setup({
+    indent = {
+        enabled = true,
+        animate = { enabled = false },
+        scope = { enabled = true, underline = false },
+    },
+})
+-- UI configuration runs after the first file's BufReadPost.
+require('snacks').indent.enable()
+
 -- 折叠
 require('ufo').setup {
     provider_selector = function()

@@ -5,6 +5,8 @@ require("dark-2026").setup({
         hl.LineNr = { fg = "#858889" }
         hl.CursorLineNr = { fg = p.fg, bold = true }
         hl.CodeiumSuggestion = { fg = p.fg_disabled, italic = true }
+        hl.SnacksIndent = { fg = '#30343b' }
+        hl.SnacksIndentScope = { fg = '#515965' }
     end,
 })
 

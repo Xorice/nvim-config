@@ -36,10 +36,6 @@
       "rev": "542b4b8f18e41df35cfbcd93c6b776e0226f30d0",
       "src": "https://github.com/OXY2DEV/markview.nvim"
     },
-    "mason-lspconfig.nvim": {
-      "rev": "a676ab7282da8d651e175118bcf54483ca11e46d",
-      "src": "https://github.com/williamboman/mason-lspconfig.nvim"
-    },
     "mason-nvim-dap.nvim": {
       "rev": "9a10e096703966335bd5c46c8c875d5b0690dade",
       "src": "https://github.com/jay-babu/mason-nvim-dap.nvim"
@@ -100,13 +96,13 @@
       "rev": "119e8961014c9bfaf1487bf3c2a393d254f337e2",
       "src": "https://github.com/kevinhwang91/promise-async"
     },
-    "smart-splits.nvim": {
-      "rev": "82d01bb71bc051955654b3af68355f783d872fe0",
-      "src": "https://github.com/mrjones2014/smart-splits.nvim"
-    },
     "smear-cursor.nvim": {
       "rev": "c85bdbb25db096fbcf616bc4e1357bd61fe2c199",
       "src": "https://github.com/sphamba/smear-cursor.nvim"
+    },
+    "snacks.nvim": {
+      "rev": "882c996cf28183f4d63640de0b4c02ec886d01f2",
+      "src": "https://github.com/folke/snacks.nvim"
     },
     "telescope.nvim": {
       "rev": "5255aa27c422de944791318024167ad5d40aad20",

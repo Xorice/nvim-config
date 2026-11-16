@@ -137,6 +137,8 @@ NVIM_NO_INSTALL=1 NVIM_NO_BOOTSTRAP=1 NVIM_NO_AI=1 nvim --headless '+luafile scr
 | `Alt+[` | 减少缩进 |
 | `Alt+J` | 当前行下移 |
 | `Alt+K` | 当前行上移 |
+| `Alt+左/右` | 缩小 / 增大当前窗口宽度，每次 3 列 |
+| `Alt+上/下` | 缩小 / 增大当前窗口高度，每次 3 行 |
 | `Ctrl+S` | 保存 |
 | `Shift+方向键` | 进入 / 扩展 Visual 选区 |
 | `Ctrl+H/L` | 按单词跳转 |
@@ -145,8 +147,12 @@ NVIM_NO_INSTALL=1 NVIM_NO_BOOTSTRAP=1 NVIM_NO_AI=1 nvim --headless '+luafile scr
 | `Tab` | 接受补全；没有候选时跳到下一个 snippet 占位或正常缩进 |
 | `Shift+Tab` | 返回上一个 snippet 占位 |
 | `Enter` | 正常换行，不确认补全 |
+| `K` | 查看光标处的函数 / 字段说明；再次按下进入说明窗口 |
+| `Ctrl+D` / `Ctrl+U` | 说明弹窗打开时向下 / 向上滚动说明，否则滚动代码 |
  
 ### 折叠
+
+代码缩进层级显示低对比度细线，光标所在代码块的引导线略亮；引导线由 Snacks indent 提供，关闭动画。搜索与文件树仍使用 Telescope 和 Neo-tree。
  
 | 按键 | 功能 |
 |------|------|

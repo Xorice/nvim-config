@@ -28,7 +28,6 @@ vim.pack.add({
 
     -- LSP & 补全
     { src = "https://github.com/williamboman/mason.nvim" },
-    { src = "https://github.com/williamboman/mason-lspconfig.nvim" },
     { src = "https://github.com/neovim/nvim-lspconfig" },
     { src = "https://github.com/saghen/blink.cmp" },
     { src = "https://github.com/rachartier/tiny-inline-diagnostic.nvim" },
@@ -39,7 +38,7 @@ vim.pack.add({
     { src = "https://github.com/nvim-lua/plenary.nvim" },
     { src = "https://github.com/nvim-telescope/telescope.nvim" },
     { src = "https://github.com/folke/which-key.nvim" },
-    { src = "https://github.com/mrjones2014/smart-splits.nvim" },
+    { src = "https://github.com/folke/snacks.nvim" },
 
     -- 折叠优化
     { src = "https://github.com/kevinhwang91/nvim-ufo" },
