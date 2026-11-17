@@ -1,11 +1,25 @@
 local M = {}
 local tasks, order = {}, {}
+local timer, closing = nil, false
+local frames = { '⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏' }
+
+local function stop()
+    if timer then timer:stop(); timer:close(); timer = nil end
+end
 
 local function refresh()
     vim.schedule(function()
         local lualine = package.loaded.lualine
         if lualine then lualine.refresh({ place = { 'statusline' } }) end
     end)
+end
+
+local function animate()
+    if timer or closing or #vim.api.nvim_list_uis() == 0 then return end
+    timer = vim.uv.new_timer()
+    timer:start(100, 100, vim.schedule_wrap(function()
+        if timer and not closing then M.status(); refresh() end
+    end))
 end
 
 function M.begin(key, label, total)
@@ -31,6 +45,7 @@ end
 function M.clear(key)
     -- Keep the slot so repeated installs do not grow the display order.
     if tasks[key] then tasks[key] = { failed = 0 } end
+    refresh()
 end
 
 function M.status()
@@ -45,10 +60,24 @@ function M.status()
         end
     end
     local failure = failed > 0 and (' · %d failed'):format(failed) or ''
-    if #active > 0 then return table.concat(active, ' · ') .. failure end
+    if #active > 0 then
+        animate()
+        local spinner = frames[math.floor(vim.uv.hrtime() / 1e8) % #frames + 1]
+        return spinner .. ' ' .. table.concat(active, ' · ') .. failure
+    end
+    if failed == 0 and finished > 0 and vim.uv.hrtime() - finished < 3e9 then
+        animate()
+        return 'Deps ready'
+    end
+    stop()
     if failed > 0 then return ('Deps: %d failed'):format(failed) end
-    if finished > 0 and vim.uv.hrtime() - finished < 3e9 then return 'Deps ready' end
     return ''
 end
+
+vim.api.nvim_create_autocmd('VimLeavePre', {
+    group = vim.api.nvim_create_augroup('BreadInstallProgress', { clear = true }),
+    once = true,
+    callback = function() closing = true; stop() end,
+})
 
 return M

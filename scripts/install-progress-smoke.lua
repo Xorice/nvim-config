@@ -34,6 +34,23 @@ package.loaded['mason-registry'] = {
 dependencies.packages = { 'alpha', 'beta', 'gamma' }
 
 local function check()
+    -- Animate during an unchanged download, then hide ready and stop refreshing.
+    local list_uis = vim.api.nvim_list_uis
+    vim.api.nvim_list_uis = function() return { {} } end
+    progress.begin('animation', 'Tools', 2)
+    local first = progress.status()
+    assert(first:match('^%S+ Tools 0/2$'), 'missing braille activity indicator')
+    wait_for(function() return #frames > 1 and progress.status() ~= first end)
+    progress.finish('animation')
+    assert(progress.status() == 'Deps ready')
+    assert(vim.wait(3500, function() return progress.status() == '' end, 20), 'ready did not disappear')
+    vim.wait(50, function() return false end, 10)
+    local idle_frames = #frames
+    vim.wait(250, function() return false end, 10)
+    assert(#frames == idle_frames, 'idle animation timer kept refreshing')
+    progress.clear('animation')
+    vim.api.nvim_list_uis = list_uis
+
     local completed = false
     dependencies.ensure(function() completed = true end, true)
     assert(progress.status():find('Tools 0/3 registry', 1, true))
@@ -79,14 +96,14 @@ local function check()
     vim.fn.executable = function(name) return name == 'tree-sitter' and 1 or executable(name) end
     require('config.treesitter')
     vim.cmd('InstallTools')
-    assert(progress.status() == 'Parsers 1/2 pending: luau')
+    assert(progress.status():find('Parsers 1/2 pending: luau', 1, true))
     vim.cmd('InstallTools')
     assert(installs == 1, 'repeated command started overlapping parser jobs')
     parser_done(nil, false)
     wait_for(function() return progress.status() == 'Deps: 1 failed' end)
     assert(not dependencies.parsers_ready)
     vim.cmd('InstallTools')
-    assert(progress.status() == 'Parsers 1/2 pending: luau')
+    assert(progress.status():find('Parsers 1/2 pending: luau', 1, true))
     installed = { 'lua', 'luau' }
     parser_done(nil, true)
     wait_for(function() return dependencies.parsers_ready end)
@@ -105,5 +122,5 @@ if not ok then
     vim.api.nvim_err_writeln(err)
     vim.cmd('cquit 1')
 end
-print('PASS: tool/parser progress, failures, retries, listener cleanup and monitor shutdown')
+print('PASS: progress animation, ready expiry, tool/parser progress, failures, retries and cleanup')
 vim.cmd('qa!')
