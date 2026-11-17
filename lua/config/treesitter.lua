@@ -1,5 +1,13 @@
 local treesitter = require('nvim-treesitter')
 local dependencies = require('dependencies')
+local platform = require('platform')
+
+-- Windows CLI builds default to MSVC even when only GCC/Clang is installed.
+-- Pass our available compiler to tree-sitter, keeping an explicit user choice.
+if platform.windows and (vim.env.CC or '') == '' then
+    vim.env.CC = platform.find({ 'gcc', 'clang', 'cc', 'cl' })
+end
+
 dependencies.setup()
 require('bread.startup').checkpoint()
 dependencies.parsers_ready = false

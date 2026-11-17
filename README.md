@@ -67,6 +67,8 @@ nvim
 
 Codeium 下载语言服务器失败时会有限重试，最终失败后保留普通补全。SSH 会话需要能从 Windows 主机访问 GitHub 的 Release 下载地址；本地电脑的代理不会自动传入远端会话。网络恢复后重启 Neovim 重试。需要临时关闭 AI 时，PowerShell 执行 `$env:NVIM_NO_AI = '1'; nvim`，恢复用 `Remove-Item Env:NVIM_NO_AI`。
 
+Windows 的 Tree-sitter 构建会通过 `CC` 使用已找到的 GCC / Clang，避免默认调用不存在的 `cl.exe`；已有的 `CC` 设置会保留。曾经构建失败时，更新配置并重启 Neovim 后运行 `:InstallTools` 重试。
+
 `:UpdateTools` 主动更新 Mason 管理的语言服务和调试器；完成后重启 Neovim。Luau LSP 至少使用 1.70.1，旧版本会在正常工具安装流程中升级，不会每次启动都追踪最新版。
 
 也可以先在外部终端执行安装脚本（不需要启动 Neovim）：
