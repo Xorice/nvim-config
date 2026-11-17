@@ -19,12 +19,17 @@ local function check()
     end
     local treesitter = require('nvim-treesitter')
     treesitter.setup({ install_dir = fixture })
-    local done, failure, success = false, nil, nil
-    treesitter.install({ 'luau' }):await(function(err, result)
-        failure, success, done = err, result, true
-    end)
-    assert(vim.wait(120000, function() return done end, 50), 'Luau installation timed out')
-    assert(not failure and success ~= false, 'Luau installation failed: ' .. tostring(failure))
+    local dependencies = require('dependencies')
+    dependencies.parsers = { 'luau' }
+    dependencies.ensure = function(callback) callback() end
+    vim.cmd('InstallTools')
+    local progress = require('bread.install_progress')
+    assert(progress.status():find('Parsers 0/1', 1, true), 'parser installation progress missing')
+    assert(vim.wait(120000, function()
+        return dependencies.parsers_ready or progress.status():find('failed', 1, true)
+    end, 50), 'Luau installation timed out')
+    assert(dependencies.parsers_ready, 'Luau installation failed: ' .. progress.status())
+    assert(progress.status() == 'Deps ready', 'parser completion was not reported')
     local library = vim.fs.joinpath(fixture, 'parser', 'luau.so')
     assert(vim.fn.filereadable(library) == 1, 'compiled parser missing')
     vim.treesitter.language.add('luau', { path = library })

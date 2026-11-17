@@ -68,6 +68,23 @@ function M.install()
     end
 end
 
+function M.repair_telescope()
+    local data = vim.fs.normalize(vim.fn.fnamemodify(vim.fn.stdpath('data'), ':p'))
+    local path = vim.fs.joinpath(data, 'site', 'pack', 'core', 'opt', 'telescope.nvim')
+    local entry = vim.fs.joinpath(path, 'lua', 'telescope', 'builtin', 'init.lua')
+    if vim.fn.filereadable(entry) == 1 or vim.fn.isdirectory(path) == 0 then return end
+    -- Preserve an incomplete checkout before vim.pack decides it is installed.
+    -- Both paths are absolute children of Neovim's data directory.
+    local backups = vim.fs.joinpath(data, 'bread-plugin-backups')
+    vim.fn.mkdir(backups, 'p')
+    local backup = vim.fs.joinpath(backups, 'telescope.nvim-' .. tostring(vim.uv.hrtime()))
+    local ok, err = vim.uv.fs_rename(path, backup)
+    if not ok then error('无法备份不完整的 Telescope 安装: ' .. tostring(err)) end
+    vim.notify('Telescope 核心文件缺失，正在按锁文件重新安装。旧目录已备份到: ' .. backup,
+        vim.log.levels.WARN)
+    return backup
+end
+
 function M.setup()
     vim.api.nvim_create_user_command('BootstrapDeps', M.install, { desc = '安装缺失的系统依赖' })
     if vim.fn.has('nvim-0.12') == 0 or not vim.pack then

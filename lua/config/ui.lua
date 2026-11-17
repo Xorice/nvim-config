@@ -29,7 +29,12 @@ checkpoint()
 
 -- 状态栏
 local workspace = require('bread.workspace')
+local install_progress = require('bread.install_progress')
 workspace.setup()
+
+local function detail_visible()
+    return vim.o.columns >= 100 or install_progress.status() == ''
+end
 
 local function codeium_status()
     if not vim.g.bread_codeium_enabled then return '󰚩 Off' end
@@ -50,19 +55,22 @@ require('lualine').setup {
         -- A 组：左侧最开头手动加一个左半圆，末尾由 options 自动加右半圆
         lualine_a = { { 'mode', fmt = function(str) return str:sub(1, 1) end, separator = { left = '' } } },
         lualine_b = { 'branch', {
-            'diff', cond = function() return vim.o.columns >= 100 or workspace.status() == '' end,
+            'diff', cond = function()
+                return vim.o.columns >= 100 or (workspace.status() == '' and install_progress.status() == '')
+            end,
         }, 'diagnostics' },
-        lualine_c = { { 'filename', path = 1 }, {
+        lualine_c = { { 'filename', path = 1, cond = detail_visible }, { install_progress.status }, {
             workspace.status,
+            cond = detail_visible,
             fmt = function(text) return (text:gsub('%%', '%%%%')) end,
         } },
         lualine_x = {
-            { codeium_status },
+            { codeium_status, cond = detail_visible },
             { function()
                 return vim.b.bread_project_kind or ''
-            end },
-            'encoding',
-            'filetype'
+            end, cond = detail_visible },
+            { 'encoding', cond = detail_visible },
+            { 'filetype', cond = detail_visible },
         },
         lualine_y = { 'progress' },
         -- Z 组：末尾手动加一个右半圆，开头由 options 自动加左半圆

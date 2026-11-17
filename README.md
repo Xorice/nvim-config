@@ -65,9 +65,13 @@ nvim
 
 `BootstrapDeps` 补系统工具；`InstallTools` 补语言工具和解析器。网络或权限错误会显示在安装终端 / Mason 日志中，不会标记为安装成功。
 
+后台安装会在底部状态栏持续显示 `Tools 2/7 ...`、`Parsers 6/10 pending: ...`；初始化动画结束后仍能看到进度。数字表示已处理的工具数或已安装的解析器数，不是下载字节百分比。失败会保留 `failed` 提示，详情查看 `:MasonLog` / `:messages`，运行 `:InstallTools` 重试。
+
 Codeium 下载语言服务器失败时会有限重试，最终失败后保留普通补全。SSH 会话需要能从 Windows 主机访问 GitHub 的 Release 下载地址；本地电脑的代理不会自动传入远端会话。网络恢复后重启 Neovim 重试。需要临时关闭 AI 时，PowerShell 执行 `$env:NVIM_NO_AI = '1'; nvim`，恢复用 `Remove-Item Env:NVIM_NO_AI`。
 
 Windows 的 Tree-sitter 构建会通过 `CC` 使用已找到的 GCC / Clang，避免默认调用不存在的 `cl.exe`；已有的 `CC` 设置会保留。曾经构建失败时，更新配置并重启 Neovim 后运行 `:InstallTools` 重试。
+
+若 Telescope 安装目录存在但核心文件 `lua/telescope/builtin/init.lua` 缺失，启动时会把旧目录移到 `stdpath('data')/bread-plugin-backups/`，再按锁文件重新安装。此时需要能访问 GitHub；仅运行 `:InstallTools` 不会重装 Neovim 插件。
 
 `:UpdateTools` 主动更新 Mason 管理的语言服务和调试器；完成后重启 Neovim。Luau LSP 至少使用 1.70.1，旧版本会在正常工具安装流程中升级，不会每次启动都追踪最新版。
 
