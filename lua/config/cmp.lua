@@ -3,6 +3,27 @@ local sources = { "lsp", "path", "snippets", "buffer" }
 vim.g.bread_codeium_enabled = vim.env.NVIM_NO_AI ~= '1'
     and vim.fn.executable('gzip') == 1 and vim.fn.executable('curl') == 1
 if vim.g.bread_codeium_enabled then
+    -- Plenary's mixed-separator log path can fail to create this on Windows.
+    vim.fn.mkdir(vim.fs.joinpath(vim.fn.stdpath('log'), 'codeium'), 'p')
+    -- The pinned Codeium downloader omits plenary's on_error handler, so a
+    -- failed curl job otherwise throws from an asynchronous Lua callback.
+    require('codeium.io').download = function(url, path, callback)
+        return require('plenary.curl').get(url, {
+            output = path,
+            compressed = false,
+            raw = { '--retry', '2', '--retry-all-errors', '--connect-timeout', '10', '--max-time', '60' },
+            on_error = vim.schedule_wrap(function(err)
+                callback(nil, err.message)
+            end),
+            callback = vim.schedule_wrap(function(out)
+                if out.status < 200 or out.status > 399 then
+                    callback(out, 'http response ' .. out.status)
+                else
+                    callback(out, nil)
+                end
+            end),
+        })
+    end
     require('blink.compat').setup({})
     require("codeium").setup {
         enable_cmp_source = true,

@@ -6,7 +6,7 @@ local groups = {
     markdown = { 'markview.nvim' },
     telescope = { 'telescope.nvim' },
 }
-local deferred, loaded = {}, {}
+local deferred, loaded, paths = {}, {}, {}
 for _, names in pairs(groups) do
     for _, name in ipairs(names) do deferred[name] = true end
 end
@@ -14,6 +14,8 @@ end
 function M.load(group)
     if loaded[group] then return end
     for _, name in ipairs(groups[group] or {}) do
+        -- Register the installed path before loading deferred Lua modules.
+        if paths[name] then vim.opt.runtimepath:append(paths[name]) end
         vim.cmd.packadd(name)
         checkpoint()
     end
@@ -65,6 +67,7 @@ vim.pack.add({
     { src = "https://github.com/Exafunction/codeium.nvim" },
     { src = "https://github.com/saghen/blink.compat" },
 }, { confirm = false, load = function(plugin)
+    paths[plugin.spec.name] = plugin.path
     if not deferred[plugin.spec.name] then
         -- After UIEnter, Neovim's automatic plugin/ script pass has already run.
         vim.cmd((vim.v.vim_did_enter == 1 and 'packadd ' or 'packadd! ') .. plugin.spec.name)

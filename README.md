@@ -65,6 +65,8 @@ nvim
 
 `BootstrapDeps` 补系统工具；`InstallTools` 补语言工具和解析器。网络或权限错误会显示在安装终端 / Mason 日志中，不会标记为安装成功。
 
+Codeium 下载语言服务器失败时会有限重试，最终失败后保留普通补全。SSH 会话需要能从 Windows 主机访问 GitHub 的 Release 下载地址；本地电脑的代理不会自动传入远端会话。网络恢复后重启 Neovim 重试。需要临时关闭 AI 时，PowerShell 执行 `$env:NVIM_NO_AI = '1'; nvim`，恢复用 `Remove-Item Env:NVIM_NO_AI`。
+
 `:UpdateTools` 主动更新 Mason 管理的语言服务和调试器；完成后重启 Neovim。Luau LSP 至少使用 1.70.1，旧版本会在正常工具安装流程中升级，不会每次启动都追踪最新版。
 
 也可以先在外部终端执行安装脚本（不需要启动 Neovim）：
